@@ -34,7 +34,7 @@ function HomePage() {
     // Initialize Google Sign-In
     if (window.google) {
       window.google.accounts.id.initialize({
-        client_id: '1234567890-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com', // Replace with your client ID
+        client_id: '913247466895-17ti5ijgjb84faobcksq4hjq8s8id8f5.apps.googleusercontent.com',
         callback: handleGoogleLogin
       });
     }

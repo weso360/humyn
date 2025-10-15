@@ -1,7 +1,41 @@
-const fs = require('fs');
-const path = require('path');
+// OpenAI API integration for Vercel
+const callOpenAI = async (systemPrompt, userPrompt) => {
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('❌ No API key, using mock response');
+    return getMockResponse(userPrompt);
+  }
 
-// Mock LLM function for Vercel
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      console.log('❌ OpenAI API error, using mock');
+      return getMockResponse(userPrompt);
+    }
+
+    const data = await response.json();
+    return JSON.parse(data.choices[0].message.content);
+  } catch (error) {
+    console.log('❌ OpenAI API failed, using mock:', error.message);
+    return getMockResponse(userPrompt);
+  }
+};
+
+// Mock response for testing
 const getMockResponse = (userPrompt) => {
   const inputText = userPrompt.match(/Input: "(.+?)"/)?.[1] || 'Sample text';
   
@@ -34,6 +68,27 @@ const getMockResponse = (userPrompt) => {
   };
 };
 
+const systemPrompt = `You are the "Humanize & Personalize Assistant." Transform AI-generated text into natural, human-like content while preserving meaning. Return exactly valid JSON with this structure:
+{
+  "output_variants": [
+    {"variant_id": "v1", "tone": "Conversational", "text": "..."},
+    {"variant_id": "v2", "tone": "Professional", "text": "..."}
+  ],
+  "changelog": [
+    "- Shortened sentences and added contractions to improve flow.",
+    "- Removed redundant phrases and clarified call-to-action."
+  ],
+  "style_profile": {
+    "tone": "Conversational",
+    "formality": "Medium",
+    "audience": "customer",
+    "personalization_tokens_used": ["name", "signoff"],
+    "imperfection_level": "low"
+  },
+  "disclosure": "This text was assisted by an AI writing tool.",
+  "confidence_score": 0.86
+}`;
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -56,7 +111,7 @@ export default async function handler(req, res) {
       tone = 'Conversational',
       formality = 'Medium',
       audience = 'general',
-      variants = 2
+      variants = 1
     } = req.body;
 
     // Validation
@@ -76,8 +131,8 @@ Formality: ${formality}
 Audience: ${audience}
 Variants: ${variants}`;
 
-    // Use mock response for now (replace with OpenAI API call)
-    const result = getMockResponse(userPrompt);
+    // Call OpenAI API
+    const result = await callOpenAI(systemPrompt, userPrompt);
 
     res.json(result);
 
