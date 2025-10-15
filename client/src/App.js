@@ -119,7 +119,7 @@ function HomePage() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/api/humanize', {
+      const response = await fetch('/api/humanize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
