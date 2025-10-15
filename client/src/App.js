@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import Editor from './pages/Editor';
 import Pricing from './pages/Pricing';
@@ -15,13 +15,7 @@ function HomePage() {
   const [formality, setFormality] = useState('Medium');
   const [audience, setAudience] = useState('general');
   const [variants, setVariants] = useState(1);
-  const [personalization, setPersonalization] = useState({
-    name: '',
-    relationship: '',
-    signoff: ''
-  });
-  const [optOutDisclosure, setOptOutDisclosure] = useState(false);
-  const [optOutReason, setOptOutReason] = useState('');
+
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,12 +81,7 @@ function HomePage() {
     setUsageCount(0);
   };
 
-  const canUseFeature = (feature) => {
-    if (!user) return false;
-    if (user.plan === 'premium') return true;
-    if (feature === 'basic' && usageCount < user.maxUsage) return true;
-    return false;
-  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -129,10 +118,7 @@ function HomePage() {
           tone,
           formality,
           audience,
-          personalization: {},
-          variants: parseInt(variants),
-          opt_out_disclosure: true,
-          opt_out_reason: 'Default - no disclosure required'
+          variants: parseInt(variants)
         }),
       });
 
@@ -184,7 +170,7 @@ function HomePage() {
           }
         );
       }
-    }, [showAuth]);
+    }, []);
 
     return (
       <div className="auth-modal">
