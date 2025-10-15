@@ -4,7 +4,7 @@ function Pricing() {
   return (
     <div className="page-container">
       <div className="page-content">
-        <h1>Pricing Plans</h1>
+        <h1>Humyn Pricing Plans</h1>
         <p>Choose the plan that works best for you.</p>
         
         <div className="pricing-grid">

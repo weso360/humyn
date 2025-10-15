@@ -1,12 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Import routes and middleware
+const authRoutes = require('./routes/auth');
+const paymentRoutes = require('./routes/payment');
+const { authenticateToken, checkUsageLimit } = require('./middleware/auth');
+const User = require('./models/User');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/humyn')
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Middleware
 app.use(cors({
@@ -138,8 +150,12 @@ const getMockResponse = (userPrompt) => {
   };
 };
 
-// Main API endpoint
-app.post('/api/humanize', async (req, res) => {
+// Use routes
+app.use('/api/auth', authRoutes);
+app.use('/api/payment', paymentRoutes);
+
+// Main API endpoint with authentication
+app.post('/api/humanize', authenticateToken, checkUsageLimit, async (req, res) => {
   try {
     const {
       source_text,
@@ -202,6 +218,12 @@ Do not add facts not present in the input. ${opt_out_disclosure ? 'User has opte
     // Override disclosure if opted out
     if (opt_out_disclosure) {
       result.disclosure = '';
+    }
+
+    // Update usage count in database
+    if (req.user.plan === 'free') {
+      req.user.usageCount += 1;
+      await req.user.save();
     }
 
     res.json(result);

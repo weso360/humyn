@@ -4,7 +4,7 @@ function Editor() {
   return (
     <div className="page-container">
       <div className="page-content">
-        <h1>AI Text Editor</h1>
+        <h1>Humyn Text Editor</h1>
         <p>Advanced text editing capabilities with AI assistance.</p>
         
         <div className="feature-grid">

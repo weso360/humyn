@@ -54,7 +54,7 @@ function Ethics() {
         
         <section>
           <h2>Reporting Concerns</h2>
-          <p>If you encounter misuse of our service or have ethical concerns, please contact us at ethics@aihumanizer.com</p>
+          <p>If you encounter misuse of our service or have ethical concerns, please contact us at ethics@humyn.com</p>
         </section>
       </div>
     </div>

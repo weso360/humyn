@@ -38,7 +38,7 @@ function Terms() {
         
         <section>
           <h2>6. Contact Information</h2>
-          <p>For questions about these Terms of Service, please contact us at legal@aihumanizer.com</p>
+          <p>For questions about these Terms of Service, please contact us at legal@humyn.com</p>
         </section>
       </div>
     </div>

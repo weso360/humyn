@@ -7,6 +7,7 @@ import FeatureRequest from './pages/FeatureRequest';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import Ethics from './pages/Ethics';
+import Success from './pages/Success';
 
 function HomePage() {
   const [sourceText, setSourceText] = useState('');
@@ -223,7 +224,7 @@ function HomePage() {
       <header className="App-header">
         <div className="header-content">
           <div>
-            <h1>AI Humanizer & Personalizer</h1>
+            <h1>Humyn</h1>
             <p>Transform AI-generated text into natural, human-like content</p>
           </div>
           <div className="auth-section">
@@ -509,7 +510,7 @@ function HomePage() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; 2024 AI Humanizer. All rights reserved.</p>
+          <p>&copy; 2024 Humyn. All rights reserved.</p>
         </div>
       </footer>
     </div>
@@ -527,6 +528,7 @@ function App() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/ethics" element={<Ethics />} />
+        <Route path="/success" element={<Success />} />
       </Routes>
     </Router>
   );

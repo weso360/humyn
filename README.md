@@ -1,4 +1,4 @@
-# AI Humanizer & Personalizer
+# Humyn
 
 A complete system for transforming AI-generated text into natural, human-like content while maintaining ethical standards and transparency.
 

@@ -17,7 +17,7 @@ function FeatureRequest() {
   return (
     <div className="page-container">
       <div className="page-content">
-        <h1>Feature Request & Issue Report</h1>
+        <h1>Humyn Feature Request & Issue Report</h1>
         <p>Help us improve by sharing your ideas or reporting issues.</p>
         
         <form onSubmit={handleSubmit} className="request-form">
