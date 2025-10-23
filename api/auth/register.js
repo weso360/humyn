@@ -23,6 +23,11 @@ let isConnected = false;
 
 async function connectDB() {
   if (isConnected) return;
+  
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is not set');
+  }
+  
   await mongoose.connect(process.env.MONGODB_URI);
   isConnected = true;
 }
@@ -32,9 +37,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  await connectDB();
-
   try {
+    await connectDB();
     const { email, password } = req.body;
     
     if (!email || !password) {
@@ -79,6 +83,7 @@ export default async function handler(req, res) {
       }
     });
   } catch (error) {
+    console.error('Register error:', error);
     res.status(500).json({ error: error.message });
   }
 }

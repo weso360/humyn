@@ -84,6 +84,7 @@ function HomePage() {
       });
       
       const data = await response.json();
+      console.log('Auth response:', response.status, data);
       
       if (response.ok) {
         setUser(data.user);
@@ -91,11 +92,12 @@ function HomePage() {
         localStorage.setItem('token', data.token);
         setShowAuth(false);
       } else {
-        alert(data.error || 'Authentication failed');
+        console.error('Auth failed:', data);
+        alert(data.error || `Authentication failed (${response.status})`);
       }
     } catch (error) {
       console.error('Auth error:', error);
-      alert('Authentication failed. Please try again.');
+      alert(`Network error: ${error.message}`);
     }
   };
 
