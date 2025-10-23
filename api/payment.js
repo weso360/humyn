@@ -11,6 +11,27 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Payment system not configured' });
     }
     
+    // Get user email if authenticated
+    let userEmail = null;
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const mongoose = require('mongoose');
+        
+        const userSchema = new mongoose.Schema({
+          email: String
+        });
+        const User = mongoose.models.User || mongoose.model('User', userSchema);
+        
+        const user = await User.findById(decoded.userId);
+        if (user) userEmail = user.email;
+      } catch (e) {
+        // Continue without email
+      }
+    }
+    
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -31,7 +52,8 @@ export default async function handler(req, res) {
       ],
       mode: 'subscription',
       success_url: process.env.STRIPE_SUCCESS_URL || `${req.headers.origin}/success`,
-      cancel_url: process.env.STRIPE_CANCEL_URL || `${req.headers.origin}/pricing`
+      cancel_url: process.env.STRIPE_CANCEL_URL || `${req.headers.origin}/pricing`,
+      customer_email: userEmail || req.body.email || undefined
     });
 
     res.json({ url: session.url });
