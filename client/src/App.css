@@ -860,9 +860,22 @@ button[type="submit"]:disabled {
   box-shadow: 0 4px 14px 0 rgb(59 130 246 / 0.25);
 }
 
-.auth-content button[type="submit"]:hover {
+.auth-content button[type="submit"]:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px 0 rgb(59 130 246 / 0.35);
+}
+
+.auth-content button[type="submit"]:disabled {
+  background: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.auth-content input:disabled {
+  background: var(--border-light);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .auth-content p {

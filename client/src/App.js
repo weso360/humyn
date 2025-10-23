@@ -23,6 +23,7 @@ function HomePage() {
   const [user, setUser] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState('login');
+  const [authLoading, setAuthLoading] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
@@ -73,6 +74,7 @@ function HomePage() {
   };
 
   const handleAuth = async (email, password) => {
+    setAuthLoading(true);
     try {
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
       
@@ -107,6 +109,8 @@ function HomePage() {
     } catch (error) {
       console.error('Auth error:', error);
       alert(`Network error: ${error.message}`);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -266,12 +270,14 @@ function HomePage() {
             
             handleAuth(email, password);
           }}>
-            <input type="email" name="email" placeholder="Email" required />
-            <input type="password" name="password" placeholder="Password" required />
+            <input type="email" name="email" placeholder="Email" required disabled={authLoading} />
+            <input type="password" name="password" placeholder="Password" required disabled={authLoading} />
             {authMode === 'signup' && (
-              <input type="password" name="confirmPassword" placeholder="Confirm Password" required />
+              <input type="password" name="confirmPassword" placeholder="Confirm Password" required disabled={authLoading} />
             )}
-            <button type="submit">{authMode === 'login' ? 'Login' : 'Sign Up'}</button>
+            <button type="submit" disabled={authLoading}>
+              {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Login' : 'Sign Up')}
+            </button>
           </form>
           <p>
             {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
