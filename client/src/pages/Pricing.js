@@ -1,6 +1,30 @@
 import React from 'react';
 
 function Pricing() {
+  const handleUpgrade = async () => {
+    try {
+      const response = await fetch('/api/payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          priceId: 'price_premium_monthly',
+          userId: 'pricing_page_user'
+        })
+      });
+      
+      const { url } = await response.json();
+      
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Upgrade error:', error);
+      alert('Unable to process upgrade. Please try again.');
+    }
+  };
+
   return (
     <div className="page-container">
       <div className="page-content">
@@ -16,7 +40,7 @@ function Pricing() {
               <li>Basic tone options</li>
               <li>Standard processing</li>
             </ul>
-            <button className="pricing-btn">Get Started</button>
+            <button className="pricing-btn" onClick={() => window.location.href = '/'}>Get Started</button>
           </div>
           
           <div className="pricing-card featured">
@@ -29,7 +53,7 @@ function Pricing() {
               <li>Advanced tone controls</li>
               <li>Export options</li>
             </ul>
-            <button className="pricing-btn">Upgrade Now</button>
+            <button className="pricing-btn" onClick={handleUpgrade}>Upgrade Now</button>
           </div>
           
           <div className="pricing-card">
