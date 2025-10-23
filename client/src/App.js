@@ -81,6 +81,30 @@ function HomePage() {
     setUsageCount(0);
   };
 
+  const handleUpgrade = async () => {
+    try {
+      const response = await fetch('/api/payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          priceId: 'price_premium_monthly', // Replace with your actual Stripe price ID
+          userId: user?.id || 'anonymous'
+        })
+      });
+      
+      const { url } = await response.json();
+      
+      if (url) {
+        window.location.href = url; // Redirect to Stripe Checkout
+      }
+    } catch (error) {
+      console.error('Upgrade error:', error);
+      alert('Unable to process upgrade. Please try again.');
+    }
+  };
+
 
 
   const handleSubmit = async (e) => {
@@ -460,7 +484,7 @@ function HomePage() {
                 <div className="feature">🎨 Advanced tone controls</div>
               </div>
               <div className="upgrade-actions">
-                <button className="upgrade-btn" onClick={() => setShowAuth(true)}>Sign Up for Premium</button>
+                <button className="upgrade-btn" onClick={handleUpgrade}>Upgrade to Premium - $9.99/month</button>
                 <button className="login-link" onClick={() => setShowAuth(true)}>Already have an account? Login</button>
               </div>
               <button className="close-btn" onClick={() => setShowUpgrade(false)}>×</button>
