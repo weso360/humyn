@@ -9,6 +9,7 @@ function PageHeader() {
         <nav className="page-nav">
           <Link to="/editor">Editor</Link>
           <Link to="/pricing">Pricing</Link>
+          <Link to="/analytics">Analytics</Link>
           <Link to="/">Home</Link>
         </nav>
       </div>
