@@ -1,7 +1,38 @@
-// OpenAI API integration for Vercel
-const callOpenAI = async (systemPrompt, userPrompt) => {
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
-    console.log('❌ No API key, using mock response');
+const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true },
+  name: { type: String, required: true },
+  password: { type: String, required: function() { return this.provider === 'email'; } },
+  picture: String,
+  provider: { type: String, enum: ['google', 'email'], default: 'email' },
+  plan: { type: String, enum: ['free', 'premium', 'enterprise'], default: 'free' },
+  stripeCustomerId: String,
+  subscriptionId: String,
+  subscriptionStatus: String,
+  usageCount: { type: Number, default: 0 },
+  maxUsage: { type: Number, default: 5 },
+  lastResetDate: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+userSchema.methods.canUseService = function() {
+  if (this.plan === 'premium' || this.plan === 'enterprise') return true;
+  return this.usageCount < this.maxUsage;
+};
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+
+let isConnected = false;
+
+async function connectDB() {
+  if (isConnected) return;
+  await mongoose.connect(process.env.MONGODB_URI);
+  isConnected = true;
+}
+
+const callLLM = async (systemPrompt, userPrompt) => {
+  if (!process.env.OPENAI_API_KEY) {
     return getMockResponse(userPrompt);
   }
 
@@ -21,21 +52,18 @@ const callOpenAI = async (systemPrompt, userPrompt) => {
         temperature: 0.7
       })
     });
-
+    
     if (!response.ok) {
-      console.log('❌ OpenAI API error, using mock');
       return getMockResponse(userPrompt);
     }
-
+    
     const data = await response.json();
     return JSON.parse(data.choices[0].message.content);
   } catch (error) {
-    console.log('❌ OpenAI API failed, using mock:', error.message);
     return getMockResponse(userPrompt);
   }
 };
 
-// Mock response for testing
 const getMockResponse = (userPrompt) => {
   const inputText = userPrompt.match(/Input: "(.+?)"/)?.[1] || 'Sample text';
   
@@ -45,19 +73,11 @@ const getMockResponse = (userPrompt) => {
         variant_id: "v1",
         tone: "Conversational",
         text: inputText.replace(/\b(must|shall|will)\b/gi, 'should').replace(/\./g, '!') + ' What do you think?'
-      },
-      {
-        variant_id: "v2", 
-        tone: "Professional",
-        text: inputText.replace(/\b(hey|hi)\b/gi, 'Hello').replace(/!/g, '.')
       }
     ],
-    changelog: [
-      "- Softened formal language and added conversational elements",
-      "- Maintained professional tone while improving readability"
-    ],
+    changelog: ["- Softened formal language and added conversational elements"],
     style_profile: {
-      tone: "Mixed",
+      tone: "Conversational",
       formality: "Medium",
       audience: "general",
       personalization_tokens_used: [],
@@ -68,53 +88,16 @@ const getMockResponse = (userPrompt) => {
   };
 };
 
-const systemPrompt = `You are the "Humanize & Personalize Assistant." Transform AI-generated text into natural, human-like content while preserving meaning. Return exactly valid JSON with this structure:
-{
-  "output_variants": [
-    {"variant_id": "v1", "tone": "Conversational", "text": "..."},
-    {"variant_id": "v2", "tone": "Professional", "text": "..."}
-  ],
-  "changelog": [
-    "- Shortened sentences and added contractions to improve flow.",
-    "- Removed redundant phrases and clarified call-to-action."
-  ],
-  "style_profile": {
-    "tone": "Conversational",
-    "formality": "Medium",
-    "audience": "customer",
-    "personalization_tokens_used": ["name", "signoff"],
-    "imperfection_level": "low"
-  },
-  "disclosure": "This text was assisted by an AI writing tool.",
-  "confidence_score": 0.86
-}`;
-
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    const {
-      source_text,
-      tone = 'Conversational',
-      formality = 'Medium',
-      audience = 'general',
-      variants = 1
-    } = req.body;
+  await connectDB();
 
-    // Validation
+  try {
+    const { source_text, tone = 'Conversational', formality = 'Medium', audience = 'general', variants = 1 } = req.body;
+
     if (!source_text || source_text.trim().length === 0) {
       return res.status(400).json({ error: 'Source text is required' });
     }
@@ -123,21 +106,48 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Text too long (max 10,000 characters)' });
     }
 
-    // Build user prompt
-    const userPrompt = `Humanize and personalize the following text while preserving meaning.
+    // Optional auth
+    let user = null;
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        user = await User.findById(decoded.userId);
+      } catch (error) {
+        // Continue without user
+      }
+    }
+
+    // Check usage limits
+    if (user && user.plan === 'free' && !user.canUseService()) {
+      return res.status(429).json({ 
+        error: 'Free tier limit reached. Upgrade to Premium for unlimited usage.',
+        upgradeRequired: true
+      });
+    }
+
+    const systemPrompt = `You are an AI text humanizer. Transform the given text to sound more natural and human-like while preserving the original meaning. Return valid JSON with the specified structure.`;
+
+    const userPrompt = `Humanize the following text:
 Input: "${source_text}"
 Tone: ${tone}
 Formality: ${formality}
 Audience: ${audience}
-Variants: ${variants}`;
+Variants: ${variants}
+Return JSON with: output_variants[], changelog[], style_profile{}, disclosure, confidence_score`;
 
-    // Call OpenAI API
-    const result = await callOpenAI(systemPrompt, userPrompt);
+    const result = await callLLM(systemPrompt, userPrompt);
+
+    // Update usage count for authenticated free users
+    if (user && user.plan === 'free') {
+      user.usageCount += 1;
+      await user.save();
+    }
 
     res.json(result);
 
   } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: error.message });
   }
 }
