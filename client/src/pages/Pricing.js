@@ -1,4 +1,5 @@
 import React from 'react';
+import '../components/PricingCard.css';
 
 function Pricing() {
   const handleUpgrade = async () => {
@@ -26,10 +27,15 @@ function Pricing() {
   };
 
   return (
-    <div className="page-container">
-      <div className="page-content">
-        <h1>Humyn Pricing Plans</h1>
-        <p>Choose the plan that works best for you.</p>
+    <div className="container">
+      <section className="hero-section">
+        <h1 className="hero-title">Simple, Transparent Pricing</h1>
+        <p className="hero-subtitle">
+          Choose the plan that works best for your content needs.
+        </p>
+      </section>
+      
+      <div className="pricing-container">
         
         <div className="pricing-grid">
           <div className="pricing-card">
@@ -69,7 +75,6 @@ function Pricing() {
           </div>
         </div>
       </div>
-    </div>
   );
 }
 

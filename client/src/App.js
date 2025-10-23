@@ -235,7 +235,7 @@ function HomePage() {
         <div className="header-content">
           <div>
             <h1>Humyn</h1>
-            <p>Transform AI-generated text into natural, human-like content</p>
+            <p>AI Text Humanizer</p>
           </div>
           <div className="auth-section">
             {user ? (
@@ -254,6 +254,13 @@ function HomePage() {
       </header>
 
       <main className="container">
+        <section className="hero-section">
+          <h1 className="hero-title">Transform AI Text into Human Content</h1>
+          <p className="hero-subtitle">
+            Make your AI-generated content sound natural and engaging with our advanced humanization technology.
+          </p>
+        </section>
+        
         <form onSubmit={handleSubmit} className="input-form">
           <div className="form-group">
             <label htmlFor="sourceText">Source Text *</label>
