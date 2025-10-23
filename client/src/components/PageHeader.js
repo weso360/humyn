@@ -10,6 +10,7 @@ function PageHeader() {
           <Link to="/editor">Editor</Link>
           <Link to="/pricing">Pricing</Link>
           <Link to="/analytics">Analytics</Link>
+          <Link to="/reports">Reports</Link>
           <Link to="/">Home</Link>
         </nav>
       </div>

@@ -9,10 +9,27 @@ function FeatureRequest() {
     email: ''
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    alert('Thank you for your submission! We\'ll review it shortly.');
-    setFormData({ type: 'feature', title: '', description: '', email: '' });
+    
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      });
+      
+      if (response.ok) {
+        alert('Thank you for your submission! We\'ll review it shortly.');
+        setFormData({ type: 'feature', title: '', description: '', email: '' });
+      } else {
+        alert('Failed to submit report. Please try again.');
+      }
+    } catch (error) {
+      alert('Network error. Please try again.');
+    }
   };
 
   return (

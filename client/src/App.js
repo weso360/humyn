@@ -9,6 +9,7 @@ import Privacy from './pages/Privacy';
 import Ethics from './pages/Ethics';
 import Success from './pages/Success';
 import Analytics from './pages/Analytics';
+import Reports from './pages/Reports';
 
 function HomePage() {
   const [sourceText, setSourceText] = useState('');
@@ -614,6 +615,7 @@ function App() {
         <Route path="/ethics" element={<Ethics />} />
         <Route path="/success" element={<Success />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/reports" element={<Reports />} />
       </Routes>
     </Router>
   );

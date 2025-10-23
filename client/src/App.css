@@ -1383,6 +1383,133 @@ button[type="submit"]:disabled {
   font-size: 1.1rem;
 }
 
+/* Reports Styles */
+.reports-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.summary-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--card-border);
+}
+
+.summary-card h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.summary-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.reports-list {
+  margin-top: 2rem;
+}
+
+.report-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--card-border);
+  transition: all 0.3s ease;
+}
+
+.report-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.report-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.report-type {
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.report-date,
+.report-time {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.delete-btn {
+  background: var(--error);
+  color: white;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.delete-btn:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.report-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.report-description {
+  color: var(--text-primary);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.report-footer {
+  border-top: 1px solid var(--border-light);
+  padding-top: 1rem;
+}
+
+.report-email {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.no-reports {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-secondary);
+  background: var(--card-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border);
+}
+
 /* Responsive Design for Results */
 @media (max-width: 768px) {
   .text-comparison {
