@@ -1,18 +1,1 @@
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "build" }
-    },
-    {
-      "src": "api/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/client/$1" }
-  ]
-}
+{\n  \"version\": 2,\n  \"builds\": [\n    {\n      \"src\": \"client/package.json\",\n      \"use\": \"@vercel/static-build\",\n      \"config\": { \"distDir\": \"build\" }\n    },\n    {\n      \"src\": \"api/*.js\",\n      \"use\": \"@vercel/node\"\n    }\n  ],\n  \"routes\": [\n    { \"src\": \"/api/humanize\", \"dest\": \"/api/humanize.js\" },\n    { \"src\": \"/api/(.*)\", \"dest\": \"/api/$1.js\" },\n    { \"src\": \"/(.*)\", \"dest\": \"/client/$1\" }\n  ]\n}
