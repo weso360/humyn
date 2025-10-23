@@ -1,0 +1,54 @@
+{
+  "timestamp": "2025-09-25T13:08:59.176Z",
+  "total_tests": 4,
+  "passed": 4,
+  "failed": 0,
+  "results": [
+    {
+      "test_id": "formal_email",
+      "status": "passed",
+      "variants": 2,
+      "confidence": 0.85
+    },
+    {
+      "test_id": "robotic_response",
+      "status": "passed",
+      "variants": 2,
+      "confidence": 0.85
+    },
+    {
+      "test_id": "academic_text",
+      "status": "passed",
+      "variants": 2,
+      "confidence": 0.85
+    },
+    {
+      "test_id": "technical_jargon",
+      "status": "passed",
+      "variants": 2,
+      "confidence": 0.85
+    }
+  ],
+  "evaluation_criteria": {
+    "naturalness": {
+      "description": "How human-like does the text sound?",
+      "scale": "1-5 (1=robotic, 5=very natural)",
+      "weight": 0.3
+    },
+    "clarity": {
+      "description": "Is the meaning clear and easy to understand?",
+      "scale": "1-5 (1=confusing, 5=very clear)",
+      "weight": 0.25
+    },
+    "tone_appropriateness": {
+      "description": "Does the tone match the requested style?",
+      "scale": "1-5 (1=wrong tone, 5=perfect tone)",
+      "weight": 0.2
+    },
+    "factual_preservation": {
+      "description": "Are all original facts preserved?",
+      "scale": "1-5 (1=facts changed, 5=facts intact)",
+      "weight": 0.25
+    }
+  }
+}

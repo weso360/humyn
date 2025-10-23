@@ -1,11 +1,13 @@
 import React from 'react';
+import PageHeader from '../components/PageHeader';
 
 function Editor() {
   return (
     <div className="page-container">
+      <PageHeader />
       <div className="page-content">
         <h1>Humyn Text Editor</h1>
-        <p>Advanced text editing capabilities with AI assistance.</p>
+        <p className="last-updated">Advanced text editing capabilities with AI assistance.</p>
         
         <div className="feature-grid">
           <div className="feature-card">

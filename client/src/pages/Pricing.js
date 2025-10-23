@@ -1,4 +1,5 @@
 import React from 'react';
+import PageHeader from '../components/PageHeader';
 import '../components/PricingCard.css';
 
 function Pricing() {
@@ -27,7 +28,9 @@ function Pricing() {
   };
 
   return (
-    <div className="container">
+    <div className="page-container">
+      <PageHeader />
+      <div className="container">
       <section className="hero-section">
         <h1 className="hero-title">Simple, Transparent Pricing</h1>
         <p className="hero-subtitle">
@@ -74,6 +77,7 @@ function Pricing() {
             <button className="pricing-btn">Contact Sales</button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

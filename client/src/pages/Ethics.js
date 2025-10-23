@@ -1,8 +1,10 @@
 import React from 'react';
+import PageHeader from '../components/PageHeader';
 
 function Ethics() {
   return (
     <div className="page-container">
+      <PageHeader />
       <div className="page-content">
         <h1>Ethics Statement</h1>
         <p className="last-updated">Our commitment to responsible AI use</p>

@@ -1,12 +1,65 @@
 const express = require('express');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 
-// Create checkout session
+// Initialize Stripe with error handling
+let stripe;
+try {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.error('❌ STRIPE_SECRET_KEY not found in environment variables');
+  } else {
+    stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    console.log('✅ Stripe initialized successfully');
+  }
+} catch (error) {
+  console.error('❌ Failed to initialize Stripe:', error.message);
+}
+
+// Create checkout session (legacy endpoint)
+router.post('/', async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+    
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Humyn Premium',
+              description: 'Unlimited humanizations and premium features'
+            },
+            unit_amount: 999, // $9.99
+            recurring: {
+              interval: 'month'
+            }
+          },
+          quantity: 1
+        }
+      ],
+      mode: 'subscription',
+      success_url: process.env.STRIPE_SUCCESS_URL || 'http://localhost:3000/success',
+      cancel_url: process.env.STRIPE_CANCEL_URL || 'http://localhost:3000/pricing'
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create checkout session (full endpoint)
 router.post('/create-checkout-session', async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+    
     const token = req.headers.authorization?.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);

@@ -11,8 +11,8 @@
 }
 
 .pricing-card {
-  background: white;
-  border: 2px solid var(--border);
+  background: var(--card-bg);
+  border: 2px solid var(--card-border);
   border-radius: var(--radius-xl);
   padding: 2rem;
   text-align: center;
@@ -90,7 +90,7 @@
 
 .pricing-btn {
   width: 100%;
-  background: var(--primary);
+  background: var(--gradient-primary);
   color: white;
   padding: 1rem 2rem;
   border: none;
@@ -100,14 +100,19 @@
   cursor: pointer;
   transition: all 0.2s ease;
   margin-top: 1rem;
+  box-shadow: 0 4px 14px 0 rgb(59 130 246 / 0.25);
 }
 
 .pricing-btn:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px 0 rgb(59 130 246 / 0.35);
 }
 
 .pricing-card.featured .pricing-btn {
-  background: var(--gradient);
-  box-shadow: var(--shadow-lg);
+  background: var(--gradient-warm);
+  box-shadow: 0 4px 14px 0 rgb(245 158 11 / 0.25);
+}
+
+.pricing-card.featured .pricing-btn:hover {
+  box-shadow: 0 8px 25px 0 rgb(245 158 11 / 0.35);
 }

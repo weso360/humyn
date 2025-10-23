@@ -1,8 +1,10 @@
 import React from 'react';
+import PageHeader from '../components/PageHeader';
 
 function Terms() {
   return (
     <div className="page-container">
+      <PageHeader />
       <div className="page-content">
         <h1>Terms of Service</h1>
         <p className="last-updated">Last updated: December 2024</p>

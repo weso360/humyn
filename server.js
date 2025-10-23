@@ -150,12 +150,35 @@ const getMockResponse = (userPrompt) => {
   };
 };
 
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'client/build')));
+}
+
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 
-// Main API endpoint with authentication
-app.post('/api/humanize', authenticateToken, checkUsageLimit, async (req, res) => {
+// Optional authentication middleware
+const jwt = require('jsonwebtoken');
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.userId);
+      req.user = user;
+    }
+    
+    next();
+  } catch (error) {
+    next();
+  }
+};
+
+// Main API endpoint with optional authentication
+app.post('/api/humanize', optionalAuth, async (req, res) => {
   try {
     const {
       source_text,
@@ -220,8 +243,8 @@ Do not add facts not present in the input. ${opt_out_disclosure ? 'User has opte
       result.disclosure = '';
     }
 
-    // Update usage count in database
-    if (req.user.plan === 'free') {
+    // Update usage count in database for authenticated users
+    if (req.user && req.user.plan === 'free') {
       req.user.usageCount += 1;
       await req.user.save();
     }
@@ -238,6 +261,13 @@ Do not add facts not present in the input. ${opt_out_disclosure ? 'User has opte
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Catch-all handler for React app in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

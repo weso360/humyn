@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 
 function Success() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ function Success() {
 
   return (
     <div className="page-container">
+      <PageHeader />
       <div className="page-content">
         <div className="success-content">
           <h1>🎉 Welcome to Premium!</h1>

@@ -1,0 +1,75 @@
+{
+  "instructions": "Rate each output on a scale of 1-5 for the following criteria:",
+  "criteria": {
+    "naturalness": {
+      "description": "How human-like does the text sound?",
+      "scale": "1-5 (1=robotic, 5=very natural)",
+      "weight": 0.3
+    },
+    "clarity": {
+      "description": "Is the meaning clear and easy to understand?",
+      "scale": "1-5 (1=confusing, 5=very clear)",
+      "weight": 0.25
+    },
+    "tone_appropriateness": {
+      "description": "Does the tone match the requested style?",
+      "scale": "1-5 (1=wrong tone, 5=perfect tone)",
+      "weight": 0.2
+    },
+    "factual_preservation": {
+      "description": "Are all original facts preserved?",
+      "scale": "1-5 (1=facts changed, 5=facts intact)",
+      "weight": 0.25
+    }
+  },
+  "test_cases": [
+    {
+      "id": "formal_email",
+      "original": "Per the prior email, you must submit the Q3 report by Friday EOD. Failure to meet the deadline will result in escalation.",
+      "humanized_variants": [],
+      "ratings": {
+        "naturalness": null,
+        "clarity": null,
+        "tone_appropriateness": null,
+        "factual_preservation": null
+      },
+      "comments": ""
+    },
+    {
+      "id": "robotic_response",
+      "original": "Thank you for your inquiry. We have received your request and will process it within 24-48 hours. Please contact us if you have additional questions.",
+      "humanized_variants": [],
+      "ratings": {
+        "naturalness": null,
+        "clarity": null,
+        "tone_appropriateness": null,
+        "factual_preservation": null
+      },
+      "comments": ""
+    },
+    {
+      "id": "academic_text",
+      "original": "The implementation of artificial intelligence systems requires careful consideration of ethical implications and potential societal impacts.",
+      "humanized_variants": [],
+      "ratings": {
+        "naturalness": null,
+        "clarity": null,
+        "tone_appropriateness": null,
+        "factual_preservation": null
+      },
+      "comments": ""
+    },
+    {
+      "id": "technical_jargon",
+      "original": "Execute the deployment pipeline utilizing the containerized microservices architecture to facilitate scalable infrastructure provisioning.",
+      "humanized_variants": [],
+      "ratings": {
+        "naturalness": null,
+        "clarity": null,
+        "tone_appropriateness": null,
+        "factual_preservation": null
+      },
+      "comments": ""
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PageHeader from '../components/PageHeader';
 
 function FeatureRequest() {
   const [formData, setFormData] = useState({
@@ -16,6 +17,7 @@ function FeatureRequest() {
 
   return (
     <div className="page-container">
+      <PageHeader />
       <div className="page-content">
         <h1>Humyn Feature Request & Issue Report</h1>
         <p>Help us improve by sharing your ideas or reporting issues.</p>

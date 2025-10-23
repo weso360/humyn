@@ -40,43 +40,69 @@ function HomePage() {
     }
   }, []);
 
-  const handleGoogleLogin = (response) => {
+  const handleGoogleLogin = async (response) => {
     try {
       const payload = JSON.parse(atob(response.credential.split('.')[1]));
-      const googleUser = {
-        email: payload.email,
-        name: payload.name,
-        picture: payload.picture,
-        plan: 'free',
-        maxUsage: 5,
-        provider: 'google'
-      };
-      setUser(googleUser);
-      localStorage.setItem('user', JSON.stringify(googleUser));
-      setShowAuth(false);
+      
+      const authResponse = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: payload.email,
+          name: payload.name,
+          picture: payload.picture
+        })
+      });
+      
+      const data = await authResponse.json();
+      
+      if (authResponse.ok) {
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        setShowAuth(false);
+      } else {
+        console.error('Google login failed:', data.error);
+      }
     } catch (error) {
       console.error('Google login error:', error);
     }
   };
 
   const handleAuth = async (email, password) => {
-    if (authMode === 'login') {
-      // Mock login
-      const mockUser = { email, plan: 'free', maxUsage: 5 };
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-    } else {
-      // Mock signup
-      const mockUser = { email, plan: 'free', maxUsage: 5 };
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+    try {
+      const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        setShowAuth(false);
+      } else {
+        alert(data.error || 'Authentication failed');
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
+      alert('Authentication failed. Please try again.');
     }
-    setShowAuth(false);
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     localStorage.removeItem('usageCount');
     setUsageCount(0);
   };
@@ -132,11 +158,18 @@ function HomePage() {
     }
 
     try {
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      
       const response = await fetch('/api/humanize', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           source_text: sourceText,
           tone,
@@ -184,17 +217,19 @@ function HomePage() {
   const AuthModal = () => {
     useEffect(() => {
       if (showAuth && window.google) {
-        window.google.accounts.id.renderButton(
-          document.getElementById('google-signin-btn'),
-          {
-            theme: 'outline',
-            size: 'large',
-            width: '100%',
-            text: 'continue_with'
+        setTimeout(() => {
+          const buttonElement = document.getElementById('google-signin-btn');
+          if (buttonElement) {
+            window.google.accounts.id.renderButton(buttonElement, {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+              text: 'continue_with'
+            });
           }
-        );
+        }, 100);
       }
-    }, []);
+    }, [showAuth]);
 
     return (
       <div className="auth-modal">
@@ -211,10 +246,20 @@ function HomePage() {
             e.preventDefault();
             const email = e.target.email.value;
             const password = e.target.password.value;
+            const confirmPassword = e.target.confirmPassword?.value;
+            
+            if (authMode === 'signup' && password !== confirmPassword) {
+              alert('Passwords do not match');
+              return;
+            }
+            
             handleAuth(email, password);
           }}>
             <input type="email" name="email" placeholder="Email" required />
             <input type="password" name="password" placeholder="Password" required />
+            {authMode === 'signup' && (
+              <input type="password" name="confirmPassword" placeholder="Confirm Password" required />
+            )}
             <button type="submit">{authMode === 'login' ? 'Login' : 'Sign Up'}</button>
           </form>
           <p>
@@ -343,6 +388,11 @@ function HomePage() {
           <div className="error-message">
             <h3>Error</h3>
             <p>{error}</p>
+            {error.includes('Free tier limit reached') && (
+              <button className="upgrade-btn" onClick={handleUpgrade}>
+                Upgrade to Premium - $9.99/month
+              </button>
+            )}
           </div>
         )}
 
