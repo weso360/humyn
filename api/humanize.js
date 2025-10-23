@@ -32,10 +32,13 @@ async function connectDB() {
 }
 
 const callLLM = async (systemPrompt, userPrompt) => {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_api_key_here') {
+    console.log('❌ No OpenAI API key, using mock response');
     return getMockResponse(userPrompt);
   }
 
+  console.log('🔄 Calling OpenAI API...');
+  
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -53,13 +56,34 @@ const callLLM = async (systemPrompt, userPrompt) => {
       })
     });
     
+    console.log(`📡 OpenAI response status: ${response.status}`);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.log('❌ OpenAI API error:', errorText);
       return getMockResponse(userPrompt);
     }
     
     const data = await response.json();
-    return JSON.parse(data.choices[0].message.content);
+    
+    if (data.error) {
+      console.log('❌ OpenAI API error:', data.error);
+      return getMockResponse(userPrompt);
+    }
+    
+    console.log('📝 Raw OpenAI response:', data.choices[0].message.content.substring(0, 100) + '...');
+    
+    try {
+      const parsed = JSON.parse(data.choices[0].message.content);
+      console.log('✅ Successfully parsed OpenAI JSON response');
+      return parsed;
+    } catch (parseError) {
+      console.log('❌ Failed to parse JSON:', parseError.message);
+      console.log('📄 Full response:', data.choices[0].message.content);
+      return getMockResponse(userPrompt);
+    }
   } catch (error) {
+    console.log('❌ OpenAI API failed:', error.message);
     return getMockResponse(userPrompt);
   }
 };
@@ -149,15 +173,39 @@ export default async function handler(req, res) {
       });
     }
 
-    const systemPrompt = `You are an AI text humanizer. Transform the given text to sound more natural and human-like while preserving the original meaning. Return valid JSON with the specified structure.`;
+    const systemPrompt = `You are an AI text humanizer. Transform the given text to sound more natural and human-like while preserving the original meaning. 
 
-    const userPrompt = `Humanize the following text:
-Input: "${source_text}"
-Tone: ${tone}
-Formality: ${formality}
-Audience: ${audience}
-Variants: ${variants}
-Return JSON with: output_variants[], changelog[], style_profile{}, disclosure, confidence_score`;
+IMPORTANT: You must return ONLY valid JSON in this exact format:
+{
+  "output_variants": [
+    {
+      "variant_id": "v1",
+      "tone": "${tone}",
+      "text": "humanized version here"
+    }
+  ],
+  "changelog": [
+    "- Specific change made",
+    "- Another change made"
+  ],
+  "style_profile": {
+    "tone": "${tone}",
+    "formality": "${formality}",
+    "audience": "${audience}",
+    "personalization_tokens_used": [],
+    "imperfection_level": "low"
+  },
+  "disclosure": "This text was assisted by an AI writing tool.",
+  "confidence_score": 0.85
+}
+
+Do not include any text before or after the JSON.`;
+
+    const userPrompt = `Humanize this text to be more natural and conversational:
+
+"${source_text}"
+
+Make it sound like a real person wrote it while keeping the same meaning. Use a ${tone.toLowerCase()} tone with ${formality.toLowerCase()} formality for a ${audience} audience.`;
 
     const result = await callLLM(systemPrompt, userPrompt);
 
