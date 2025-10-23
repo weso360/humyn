@@ -24,9 +24,11 @@ let isConnected = false;
 async function connectDB() {
   if (isConnected) return;
   await mongoose.connect(process.env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
-    bufferCommands: false
+    bufferCommands: false,
+    maxPoolSize: 1,
+    retryWrites: true
   });
   isConnected = true;
 }
