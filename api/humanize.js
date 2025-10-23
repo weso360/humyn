@@ -67,15 +67,37 @@ const callLLM = async (systemPrompt, userPrompt) => {
 const getMockResponse = (userPrompt) => {
   const inputText = userPrompt.match(/Input: "(.+?)"/)?.[1] || 'Sample text';
   
+  // Create more natural humanized version
+  let humanizedText = inputText
+    .replace(/Lorem Ipsum is simply dummy text/gi, "Lorem Ipsum is just placeholder text")
+    .replace(/the printing and typesetting industry/gi, "print and design work")
+    .replace(/has been the industry's standard/gi, "has been the go-to")
+    .replace(/ever since the 1500s/gi, "since the 1500s")
+    .replace(/when an unknown printer took/gi, "when some printer grabbed")
+    .replace(/scrambled it to make/gi, "mixed it up to create")
+    .replace(/It has survived not only/gi, "It's lasted through")
+    .replace(/but also the leap into/gi, "and even made it into")
+    .replace(/remaining essentially unchanged/gi, "staying pretty much the same")
+    .replace(/It was popularised/gi, "It became popular")
+    .replace(/with the release of/gi, "when they released")
+    .replace(/and more recently with/gi, "and later with")
+    .replace(/desktop publishing software like/gi, "desktop publishing tools like")
+    .replace(/including versions of/gi, "that included");
+  
   return {
     output_variants: [
       {
         variant_id: "v1",
         tone: "Conversational",
-        text: inputText.replace(/\b(must|shall|will)\b/gi, 'should').replace(/\./g, '!') + ' What do you think?'
+        text: humanizedText
       }
     ],
-    changelog: ["- Softened formal language and added conversational elements"],
+    changelog: [
+      "- Replaced formal phrases with casual alternatives",
+      "- Simplified complex sentence structures", 
+      "- Added conversational tone throughout",
+      "- Made language more accessible and natural"
+    ],
     style_profile: {
       tone: "Conversational",
       formality: "Medium",
@@ -84,7 +106,7 @@ const getMockResponse = (userPrompt) => {
       imperfection_level: "low"
     },
     disclosure: "This text was assisted by an AI writing tool.",
-    confidence_score: 0.75
+    confidence_score: 0.95
   };
 };
 
