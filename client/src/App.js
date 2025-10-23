@@ -83,8 +83,16 @@ function HomePage() {
         body: JSON.stringify({ email, password })
       });
       
-      const data = await response.json();
-      console.log('Auth response:', response.status, data);
+      const text = await response.text();
+      console.log('Auth response:', response.status, text);
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid response');
+      }
       
       if (response.ok) {
         setUser(data.user);
