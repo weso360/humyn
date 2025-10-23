@@ -229,7 +229,7 @@ function HomePage() {
           }
         }, 100);
       }
-    }, [showAuth]);
+    }, []);
 
     return (
       <div className="auth-modal">
