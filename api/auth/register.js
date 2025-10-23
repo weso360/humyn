@@ -28,7 +28,11 @@ async function connectDB() {
     throw new Error('MONGODB_URI environment variable is not set');
   }
   
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    bufferCommands: false
+  });
   isConnected = true;
 }
 
