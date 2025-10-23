@@ -1,9 +1,0 @@
-{
-  "buildCommand": "cd client && npm run build",
-  "outputDirectory": "client/build",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
-}
