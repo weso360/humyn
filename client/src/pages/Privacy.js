@@ -1,56 +1,61 @@
 import React from 'react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
+
+const sections = [
+  {
+    title: 'Information we collect',
+    list: [
+      'Account details such as email, name, and profile image.',
+      'Usage data about how often features are used.',
+      'Text you submit for processing while the request is active.',
+    ],
+  },
+  {
+    title: 'How we use data',
+    list: [
+      'To authenticate users and manage subscriptions.',
+      'To process humanization requests and improve the product.',
+      'To understand usage patterns and support customers.',
+    ],
+  },
+  {
+    title: 'Storage and retention',
+    body: 'Processed text is not retained longer than needed for the request workflow. Account data is kept until the account is removed or retention obligations end.',
+  },
+  {
+    title: 'Third-party services',
+    body: 'We rely on providers such as Google for authentication and external AI services for processing. Those providers have their own privacy policies and data practices.',
+  },
+  {
+    title: 'Security',
+    body: 'We use reasonable safeguards to protect personal information against unauthorized access, disclosure, or loss.',
+  },
+];
 
 function Privacy() {
   return (
-    <div className="page-container">
-      <PageHeader />
-      <div className="page-content">
-        <h1>Privacy Policy</h1>
-        <p className="last-updated">Last updated: December 2024</p>
-        
-        <section>
-          <h2>Information We Collect</h2>
-          <p>We collect information you provide directly to us, such as when you create an account, use our services, or contact us for support.</p>
-          <ul>
-            <li>Account information (email, name)</li>
-            <li>Usage data and analytics</li>
-            <li>Text content you submit for processing</li>
-          </ul>
-        </section>
-        
-        <section>
-          <h2>How We Use Your Information</h2>
-          <p>We use the information we collect to:</p>
-          <ul>
-            <li>Provide and improve our services</li>
-            <li>Process your text humanization requests</li>
-            <li>Communicate with you about your account</li>
-            <li>Analyze usage patterns to enhance user experience</li>
-          </ul>
-        </section>
-        
-        <section>
-          <h2>Data Security</h2>
-          <p>We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
-        </section>
-        
-        <section>
-          <h2>Data Retention</h2>
-          <p>We do not store your text content after processing. Account information is retained until you delete your account.</p>
-        </section>
-        
-        <section>
-          <h2>Third-Party Services</h2>
-          <p>We use third-party services for authentication (Google) and AI processing (OpenAI). These services have their own privacy policies.</p>
-        </section>
-        
-        <section>
-          <h2>Contact Us</h2>
-          <p>If you have questions about this Privacy Policy, please contact us at privacy@humyn.com</p>
-        </section>
-      </div>
-    </div>
+    <PageLayout
+      eyebrow="Privacy"
+      title="Privacy policy"
+      description="Last updated: December 2024"
+    >
+      <section className="policy-stack">
+        {sections.map((section, index) => (
+          <article key={section.title} className="surface-card policy-card">
+            <span className="eyebrow">Section {index + 1}</span>
+            <h2>{section.title}</h2>
+            {section.body ? <p>{section.body}</p> : null}
+            {section.list ? (
+              <ul className="clean-list">
+                {section.list.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </article>
+        ))}
+      </section>
+    </PageLayout>
   );
 }
 

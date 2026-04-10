@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import PageHeader from '../components/PageHeader';
+import React, { useEffect, useState } from 'react';
+import PageLayout from '../components/PageLayout';
 
 function Analytics() {
   const [analytics, setAnalytics] = useState(null);
@@ -7,147 +7,171 @@ function Analytics() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/analytics', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Access denied');
+        }
+
+        const data = await response.json();
+        setAnalytics(data);
+      } catch (requestError) {
+        setError(requestError.message || 'Failed to load analytics');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchAnalytics();
   }, []);
 
-  const fetchAnalytics = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/analytics', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAnalytics(data);
-      } else {
-        setError('Access denied');
-      }
-    } catch (err) {
-      setError('Failed to load analytics');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading) {
     return (
-      <div className="page-container">
-        <PageHeader />
-        <div className="page-content">
-          <div className="loading">Loading analytics...</div>
-        </div>
-      </div>
+      <PageLayout
+        eyebrow="Analytics"
+        title="Platform analytics"
+        description="Loading current metrics."
+      >
+        <section className="surface-card empty-state">
+          <h2>Loading analytics...</h2>
+          <p>Fetching the latest usage, revenue, and account data.</p>
+        </section>
+      </PageLayout>
     );
   }
 
   if (error) {
     return (
-      <div className="page-container">
-        <PageHeader />
-        <div className="page-content">
-          <div className="error-message">
-            <h3>Access Denied</h3>
-            <p>{error}</p>
-          </div>
-        </div>
-      </div>
+      <PageLayout
+        eyebrow="Analytics"
+        title="Platform analytics"
+        description="This area is limited to authorized accounts."
+      >
+        <section className="notice-card notice-card--error">
+          <strong>Access denied</strong>
+          <p>{error}</p>
+        </section>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="page-container">
-      <PageHeader />
-      <div className="page-content">
-        <h1>Analytics Dashboard</h1>
-        <p className="last-updated">Real-time platform metrics</p>
-
-        <div className="analytics-grid">
-          <div className="metric-card">
-            <h3>Total Users</h3>
-            <div className="metric-value">{analytics.totalUsers}</div>
-            <div className="metric-breakdown">
-              <span>Free: {analytics.freeUsers}</span>
-              <span>Premium: {analytics.premiumUsers}</span>
+    <PageLayout
+      eyebrow="Analytics"
+      title="A clearer read on product usage and revenue"
+      description="Monitor adoption, rewrite volume, and paid growth from one front-end dashboard."
+      aside={
+        <div className="surface-card summary-card">
+          <span className="eyebrow">Snapshot</span>
+          <div className="spec-list">
+            <div>
+              <span>Total users</span>
+              <strong>{analytics.totalUsers}</strong>
             </div>
-          </div>
-
-          <div className="metric-card">
-            <h3>Total Humanizations</h3>
-            <div className="metric-value">{analytics.totalHumanizations}</div>
-            <div className="metric-breakdown">
-              <span>Today: {analytics.humanizationsToday}</span>
-              <span>This Week: {analytics.humanizationsWeek}</span>
+            <div>
+              <span>MRR</span>
+              <strong>${analytics.mrr}</strong>
             </div>
-          </div>
-
-          <div className="metric-card">
-            <h3>Revenue</h3>
-            <div className="metric-value">${analytics.monthlyRevenue}</div>
-            <div className="metric-breakdown">
-              <span>MRR: ${analytics.mrr}</span>
-              <span>Subscriptions: {analytics.activeSubscriptions}</span>
-            </div>
-          </div>
-
-          <div className="metric-card">
-            <h3>Usage Stats</h3>
-            <div className="metric-value">{analytics.avgUsagePerUser}</div>
-            <div className="metric-breakdown">
-              <span>Avg per user</span>
-              <span>Peak: {analytics.peakUsage}/day</span>
+            <div>
+              <span>Runs today</span>
+              <strong>{analytics.humanizationsToday}</strong>
             </div>
           </div>
         </div>
+      }
+    >
+      <section className="metric-grid">
+        <article className="surface-card metric-card">
+          <span className="eyebrow">Users</span>
+          <h2>{analytics.totalUsers}</h2>
+          <p>Free: {analytics.freeUsers}</p>
+          <p>Premium: {analytics.premiumUsers}</p>
+        </article>
 
-        <div className="analytics-sections">
-          <section>
-            <h2>Recent Users</h2>
-            <div className="users-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Plan</th>
-                    <th>Usage</th>
-                    <th>Joined</th>
+        <article className="surface-card metric-card">
+          <span className="eyebrow">Humanizations</span>
+          <h2>{analytics.totalHumanizations}</h2>
+          <p>Today: {analytics.humanizationsToday}</p>
+          <p>This week: {analytics.humanizationsWeek}</p>
+        </article>
+
+        <article className="surface-card metric-card">
+          <span className="eyebrow">Revenue</span>
+          <h2>${analytics.monthlyRevenue}</h2>
+          <p>MRR: ${analytics.mrr}</p>
+          <p>Active subscriptions: {analytics.activeSubscriptions}</p>
+        </article>
+
+        <article className="surface-card metric-card">
+          <span className="eyebrow">Usage depth</span>
+          <h2>{analytics.avgUsagePerUser}</h2>
+          <p>Average runs per user</p>
+          <p>Peak: {analytics.peakUsage}/day</p>
+        </article>
+      </section>
+
+      <section className="data-layout">
+        <article className="surface-card data-card">
+          <div className="section-heading section-heading--row">
+            <div>
+              <span className="eyebrow">Recent users</span>
+              <h2>Latest signups</h2>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Plan</th>
+                  <th>Usage</th>
+                  <th>Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.recentUsers.map((user) => (
+                  <tr key={user._id}>
+                    <td>{user.email}</td>
+                    <td>
+                      <span className="plan-pill">{user.plan}</span>
+                    </td>
+                    <td>
+                      {user.usageCount}/{user.maxUsage}
+                    </td>
+                    <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {analytics.recentUsers.map(user => (
-                    <tr key={user._id}>
-                      <td>{user.email}</td>
-                      <td>
-                        <span className={`plan-badge ${user.plan}`}>
-                          {user.plan.toUpperCase()}
-                        </span>
-                      </td>
-                      <td>{user.usageCount}/{user.maxUsage}</td>
-                      <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
 
-          <section>
-            <h2>Top Users by Usage</h2>
-            <div className="usage-list">
-              {analytics.topUsers.map((user, index) => (
-                <div key={user._id} className="usage-item">
-                  <span className="rank">#{index + 1}</span>
-                  <span className="user-email">{user.email}</span>
-                  <span className="usage-count">{user.usageCount} uses</span>
+        <article className="surface-card data-card">
+          <span className="eyebrow">Power users</span>
+          <h2>Top accounts by usage</h2>
+          <div className="rank-list">
+            {analytics.topUsers.map((user, index) => (
+              <div key={user._id} className="rank-list__item">
+                <span className="rank-list__index">#{index + 1}</span>
+                <div>
+                  <strong>{user.email}</strong>
+                  <small>{user.plan} plan</small>
                 </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
+                <span>{user.usageCount} uses</span>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+    </PageLayout>
   );
 }
 

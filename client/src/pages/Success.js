@@ -1,48 +1,40 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import PageHeader from '../components/PageHeader';
+import { Link, useNavigate } from 'react-router-dom';
+import PageLayout from '../components/PageLayout';
 
 function Success() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Redirect to home after 3 seconds
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       navigate('/');
     }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [navigate]);
 
   return (
-    <div className="page-container">
-      <PageHeader />
-      <div className="page-content">
-        <div className="success-content">
-          <h1>🎉 Welcome to Premium!</h1>
-          <p>Your subscription has been activated successfully.</p>
-          
-          <div className="premium-features">
-            <h2>You now have access to:</h2>
-            <ul>
-              <li>✨ Unlimited humanizations</li>
-              <li>🔄 Multiple text variants</li>
-              <li>⚡ Priority processing</li>
-              <li>🎨 Advanced tone controls</li>
-            </ul>
-          </div>
-          
-          <p>Redirecting you to the app in 3 seconds...</p>
-          
-          <button 
-            className="cta-btn" 
-            onClick={() => navigate('/')}
-          >
-            Start Using Premium Features
-          </button>
+    <PageLayout
+      eyebrow="Billing"
+      title="Premium is now active"
+      description="Your subscription was activated successfully. You will be sent back to the workspace automatically."
+    >
+      <section className="surface-card success-card">
+        <span className="eyebrow">Unlocked</span>
+        <h2>You now have access to the full rewrite workflow.</h2>
+        <ul className="clean-list">
+          <li>Unlimited humanizations</li>
+          <li>Multiple output variants</li>
+          <li>Priority processing</li>
+          <li>Export-ready results</li>
+        </ul>
+        <div className="page-hero__actions">
+          <Link to="/" className="button button--primary">
+            Return to workspace
+          </Link>
         </div>
-      </div>
-    </div>
+      </section>
+    </PageLayout>
   );
 }
 

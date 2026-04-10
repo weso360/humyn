@@ -1,65 +1,59 @@
 import React from 'react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
+
+const principles = [
+  {
+    title: 'Transparency',
+    body: 'We want the product to improve writing quality, not conceal accountability or intent.',
+  },
+  {
+    title: 'Responsible use',
+    body: 'Users remain responsible for how rewritten content is used, published, and represented.',
+  },
+  {
+    title: 'Privacy',
+    body: 'The product should minimize retained content and protect user information with sensible defaults.',
+  },
+  {
+    title: 'Integrity',
+    body: 'We discourage deceptive or harmful uses, including impersonation, misinformation, or academic dishonesty.',
+  },
+];
 
 function Ethics() {
   return (
-    <div className="page-container">
-      <PageHeader />
-      <div className="page-content">
-        <h1>Ethics Statement</h1>
-        <p className="last-updated">Our commitment to responsible AI use</p>
-        
-        <section>
-          <h2>Our Mission</h2>
-          <p>AI Humanizer is committed to promoting responsible and ethical use of artificial intelligence in content creation while maintaining transparency and user trust.</p>
-        </section>
-        
-        <section>
-          <h2>Ethical Principles</h2>
-          <div className="principle">
-            <h3>🎯 Transparency</h3>
-            <p>We believe in clear communication about our AI capabilities and limitations.</p>
-          </div>
-          <div className="principle">
-            <h3>🛡️ Responsibility</h3>
-            <p>Users are responsible for how they use our humanized content and must comply with applicable laws.</p>
-          </div>
-          <div className="principle">
-            <h3>🤝 Integrity</h3>
-            <p>We encourage honest use of AI assistance and discourage deceptive practices.</p>
-          </div>
-          <div className="principle">
-            <h3>🔒 Privacy</h3>
-            <p>We protect user data and do not store processed content unnecessarily.</p>
-          </div>
-        </section>
-        
-        <section>
-          <h2>Prohibited Uses</h2>
-          <ul>
-            <li>Creating misleading or false information</li>
-            <li>Academic dishonesty or plagiarism</li>
-            <li>Generating harmful or illegal content</li>
-            <li>Impersonating others or creating fake identities</li>
-          </ul>
-        </section>
-        
-        <section>
-          <h2>Best Practices</h2>
-          <ul>
-            <li>Use AI humanization to improve clarity and readability</li>
-            <li>Maintain authorship and accountability for your content</li>
-            <li>Consider disclosure when appropriate for your context</li>
-            <li>Respect intellectual property and copyright laws</li>
-          </ul>
-        </section>
-        
-        <section>
-          <h2>Reporting Concerns</h2>
-          <p>If you encounter misuse of our service or have ethical concerns, please contact us at ethics@humyn.com</p>
-        </section>
-      </div>
-    </div>
+    <PageLayout
+      eyebrow="Ethics"
+      title="Our approach to responsible AI writing support"
+      description="Humyn is built to help people communicate more clearly, not to remove responsibility from the person publishing the words."
+      aside={
+        <div className="surface-card summary-card">
+          <span className="eyebrow">Best practice</span>
+          <p>Use the tool to clarify, refine, and personalize writing that you still stand behind as the author.</p>
+        </div>
+      }
+    >
+      <section className="capability-grid">
+        {principles.map((principle) => (
+          <article key={principle.title} className="surface-card capability-card">
+            <span className="eyebrow">Principle</span>
+            <h3>{principle.title}</h3>
+            <p>{principle.body}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="surface-card policy-card">
+        <span className="eyebrow">Prohibited uses</span>
+        <h2>What we do not support</h2>
+        <ul className="clean-list">
+          <li>Creating false or misleading information.</li>
+          <li>Academic dishonesty, plagiarism, or hidden impersonation.</li>
+          <li>Illegal, abusive, or harmful content generation.</li>
+          <li>Using rewritten output to avoid accountability for the substance of the message.</li>
+        </ul>
+      </section>
+    </PageLayout>
   );
 }
 

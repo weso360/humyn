@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="humynGradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d46b4e" />
+      <stop offset="1" stop-color="#c25739" />
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="16" fill="url(#humynGradient)" />
+  <path
+    d="M22 18h8v12h12V18h8v28h-8V37H30v9h-8V18Z"
+    fill="#fff7f2"
+  />
+</svg>

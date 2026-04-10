@@ -1,49 +1,57 @@
 import React from 'react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
+
+const sections = [
+  {
+    title: 'Acceptance of terms',
+    body: 'By accessing and using Humyn, you agree to these terms and to any policies referenced from them.',
+  },
+  {
+    title: 'Service scope',
+    body: 'Humyn provides AI-assisted text transformation tools intended to help users make drafts sound more natural and audience-aware.',
+  },
+  {
+    title: 'User responsibilities',
+    list: [
+      'You are responsible for the content you submit and publish.',
+      'You must not use the service for illegal, harmful, or deceptive activity.',
+      'You must respect intellectual property, privacy, and platform policies.',
+    ],
+  },
+  {
+    title: 'Availability and limits',
+    body: 'We may update, suspend, or discontinue parts of the service as the product evolves.',
+  },
+  {
+    title: 'Liability',
+    body: 'Humyn is provided as-is. We are not liable for damages arising from use of or inability to use the service, subject to applicable law.',
+  },
+];
 
 function Terms() {
   return (
-    <div className="page-container">
-      <PageHeader />
-      <div className="page-content">
-        <h1>Terms of Service</h1>
-        <p className="last-updated">Last updated: December 2024</p>
-        
-        <section>
-          <h2>1. Acceptance of Terms</h2>
-          <p>By accessing and using AI Humanizer, you accept and agree to be bound by the terms and provision of this agreement.</p>
-        </section>
-        
-        <section>
-          <h2>2. Use License</h2>
-          <p>Permission is granted to temporarily use AI Humanizer for personal and commercial purposes. This license shall automatically terminate if you violate any of these restrictions.</p>
-        </section>
-        
-        <section>
-          <h2>3. Service Description</h2>
-          <p>AI Humanizer provides text transformation services to make AI-generated content appear more human-like. We reserve the right to modify or discontinue the service at any time.</p>
-        </section>
-        
-        <section>
-          <h2>4. User Responsibilities</h2>
-          <ul>
-            <li>You are responsible for all content you submit to our service</li>
-            <li>You must not use the service for illegal or harmful purposes</li>
-            <li>You must respect intellectual property rights</li>
-          </ul>
-        </section>
-        
-        <section>
-          <h2>5. Limitations</h2>
-          <p>In no event shall AI Humanizer be liable for any damages arising out of the use or inability to use the service.</p>
-        </section>
-        
-        <section>
-          <h2>6. Contact Information</h2>
-          <p>For questions about these Terms of Service, please contact us at legal@humyn.com</p>
-        </section>
-      </div>
-    </div>
+    <PageLayout
+      eyebrow="Terms"
+      title="Terms of service"
+      description="Last updated: December 2024"
+    >
+      <section className="policy-stack">
+        {sections.map((section, index) => (
+          <article key={section.title} className="surface-card policy-card">
+            <span className="eyebrow">Section {index + 1}</span>
+            <h2>{section.title}</h2>
+            {section.body ? <p>{section.body}</p> : null}
+            {section.list ? (
+              <ul className="clean-list">
+                {section.list.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </article>
+        ))}
+      </section>
+    </PageLayout>
   );
 }
 
