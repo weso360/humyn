@@ -1,30 +1,32 @@
 {
-  "name": "humyn",
+  "name": "streamlink",
   "version": "1.0.0",
-  "description": "Humyn - AI text humanization and personalization tool",
+  "description": "WebRTC peer-to-peer streaming — phone camera to OBS at 4K/HD",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "concurrently \"nodemon server.js\" \"cd client && npm start\"",
     "build": "cd client && npm install && npm run build",
-    "build:client": "cd client && npm run build",
-    "vercel-build": "cd client && npm install && npm run build"
+    "build:client": "cd client && npm run build"
   },
   "dependencies": {
-    "express": "^4.18.2",
     "cors": "^2.8.5",
-    "express-rate-limit": "^6.7.0",
     "dotenv": "^16.0.3",
-    "mongoose": "^7.0.3",
-    "jsonwebtoken": "^9.0.0",
-    "bcryptjs": "^2.4.3",
-    "stripe": "^12.0.0",
-    "nodemailer": "^6.9.1"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
+    "concurrently": "^9.2.3",
     "nodemon": "^2.0.22"
   },
-  "keywords": ["ai", "humanization", "text", "personalization"],
+  "keywords": [
+    "webrtc",
+    "streaming",
+    "obs",
+    "4k",
+    "phone",
+    "camera"
+  ],
   "author": "",
   "license": "MIT"
 }
