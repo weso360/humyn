@@ -176,6 +176,9 @@ export const selectCaptureCanvas = (baseCanvas) => baseCanvas;
 
 export const selectOutgoingVideoTrack = (cameraTrack, processedTrack) => cameraTrack || processedTrack || null;
 
+export const nextVideoBitrateCap = (currentCap) =>
+  Math.max(1_500_000, currentCap ? Math.round(currentCap * .7) : 5_000_000);
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -582,11 +585,6 @@ export default function Sender() {
   // by others, and so each viewer's own encoding can be throttled independently.
   const [connQuality, setConnQuality]   = useState(null);
   const perPeerStatsRef                 = useRef({}); // viewerId -> { timer, prevBytes, prevTime, lowStreak, currentCapKbps }
-  const [autoQuality, setAutoQuality]   = useState(true);
-  const [autoDowngradeNotice, setAutoDowngradeNotice] = useState('');
-  const autoQualityRef                  = useRef(true);
-  const lowBitrateStreakRef             = useRef(0);
-  const lastDowngradeRef                = useRef(0);
 
   // UI
   const [status, setStatus]           = useState('idle');
@@ -634,7 +632,6 @@ export default function Sender() {
   useEffect(() => { selVideoIdRef.current = selVideoId; }, [selVideoId]);
   useEffect(() => { selAudioIdRef.current = selAudioId; }, [selAudioId]);
   useEffect(() => { fxRef.current = fx; }, [fx]);
-  useEffect(() => { autoQualityRef.current = autoQuality; }, [autoQuality]);
   useEffect(() => { presetRef.current = preset; }, [preset]);
   useEffect(() => { useCustomRef.current = useCustom; }, [useCustom]);
 
@@ -976,51 +973,9 @@ export default function Sender() {
             if (bucket.prevTime > 0 && r.bytesSent >= bucket.prevBytes) {
               const mbps = (r.bytesSent - bucket.prevBytes) * 8 / ((now - bucket.prevTime) / 1000) / 1_000_000;
               setConnQuality({ bitrate: mbps });
-
-              // Per-viewer throttle: cap just this connection's bitrate first — cheap, fast,
-              // and doesn't affect any other viewer or the shared camera resolution.
-              if (mbps < 0.4) { bucket.lowStreak += 1; bucket.highStreak = 0; }
-              else if (bucket.capKbps && mbps * 1000 > bucket.capKbps * 1.5) { bucket.highStreak += 1; bucket.lowStreak = 0; }
-              else { bucket.lowStreak = 0; bucket.highStreak = 0; }
-
-              const sender = pc._videoSender;
-              if (sender && bucket.lowStreak >= 2) {
-                const nextCap = Math.max(150, Math.round((bucket.capKbps || 2500) * 0.6));
-                const params = sender.getParameters();
-                params.encodings = params.encodings?.length ? params.encodings : [{}];
-                params.encodings[0].maxBitrate = nextCap * 1000;
-                sender.setParameters(params).catch(() => {});
-                bucket.capKbps = nextCap;
-                bucket.lowStreak = 0;
-              } else if (sender && bucket.highStreak >= 3 && bucket.capKbps) {
-                // Connection recovered — let this viewer's quality climb back up.
-                const params = sender.getParameters();
-                if (params.encodings?.[0]) delete params.encodings[0].maxBitrate;
-                sender.setParameters(params).catch(() => {});
-                bucket.capKbps = null;
-                bucket.highStreak = 0;
-              }
-
-              // Global auto-downgrade: if this viewer's connection can't sustain even a modest
-              // bitrate for a sustained stretch, step the shared camera preset down one tier.
-              if (autoQualityRef.current && !useCustomRef.current) {
-                const idx = PRESETS.findIndex(p => p.id === presetRef.current.id);
-                const canDowngrade = idx >= 0 && idx < PRESETS.length - 1;
-                const cooledDown = now - lastDowngradeRef.current > 15000;
-
-                if (lowBitrateStreakRef.current >= 3 && canDowngrade && cooledDown) {
-                  const next = PRESETS[idx + 1];
-                  lowBitrateStreakRef.current = 0;
-                  lastDowngradeRef.current = now;
-                  setAutoDowngradeNotice(`Auto-dropped to ${next.desc} — weak connection`);
-                  setTimeout(() => setAutoDowngradeNotice(''), 5000);
-                  applyPreset(next);
-                } else if (mbps < 0.4) {
-                  lowBitrateStreakRef.current += 1;
-                } else {
-                  lowBitrateStreakRef.current = 0;
-                }
-              }
+              // bytesSent is content-dependent: a static scene naturally encodes at a low rate.
+              // Treating it as available bandwidth previously crushed 1080p streams to 150 Kbps.
+              // WebRTC's congestion controller remains responsible for genuine network adaptation.
             }
             bucket.prevBytes = r.bytesSent;
             bucket.prevTime = now;
@@ -1045,10 +1000,21 @@ export default function Sender() {
     // reserved from the start, a track that becomes ready moments later has nowhere to attach to.
     const processedTrack = getProcessedVideoTrack();
     const cameraTrack = streamRef.current?.getVideoTracks()[0];
-    const videoTransceiver = pc.addTransceiver('video', { direction: 'sendonly' });
+    const videoTransceiver = pc.addTransceiver('video', {
+      direction: 'sendonly',
+      sendEncodings: [{ maxBitrate: 8_000_000 }],
+    });
     const outgoingVideoTrack = selectOutgoingVideoTrack(cameraTrack, processedTrack);
-    if (outgoingVideoTrack) videoTransceiver.sender.replaceTrack(outgoingVideoTrack);
+    if (outgoingVideoTrack) {
+      outgoingVideoTrack.contentHint = 'detail';
+      videoTransceiver.sender.replaceTrack(outgoingVideoTrack);
+    }
     pc._videoSender = videoTransceiver.sender;
+    const videoParams = videoTransceiver.sender.getParameters();
+    videoParams.encodings = videoParams.encodings?.length ? videoParams.encodings : [{}];
+    videoParams.encodings[0].maxBitrate = 8_000_000;
+    videoParams.degradationPreference = 'maintain-resolution';
+    videoTransceiver.sender.setParameters(videoParams).catch(() => {});
 
     const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
     const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendonly' });
@@ -1310,7 +1276,6 @@ export default function Sender() {
                 <span className="hud-rec-dot" /> REC {String(Math.floor(recordingSecs / 60)).padStart(2, '0')}:{String(recordingSecs % 60).padStart(2, '0')}
               </span>
             )}
-            {autoDowngradeNotice && <span className="hud-quality ok">{autoDowngradeNotice}</span>}
           </div>
           <div className="hud-actions">
             <button className={`hud-icon-btn${isRecording ? ' active' : ''}`} onClick={() => (isRecording ? stopRecording() : startRecording())} aria-label={isRecording ? 'Stop recording' : 'Start local recording'}>
@@ -1397,15 +1362,9 @@ export default function Sender() {
               ))}
             </div>
 
-            <button className={`toggle-btn${autoQuality ? ' on' : ''}`} style={{ width: '100%', marginBottom: '0.7rem' }}
-              onClick={() => setAutoQuality(a => !a)}>
-              {autoQuality ? '📶 Auto Quality: On' : '📶 Auto Quality: Off'}
-            </button>
-            {autoQuality && (
-              <p className="device-picker-note" style={{ marginTop: '-0.4rem', marginBottom: '0.7rem' }}>
-                Automatically drops one preset tier if your connection can't sustain the current bitrate.
-              </p>
-            )}
+            <div className="toggle-btn on" style={{ width: '100%', marginBottom: '0.7rem', cursor: 'default' }}>
+              📶 WebRTC network adaptation active
+            </div>
 
             <details className="custom-details">
               <summary>Custom resolution & FPS</summary>
