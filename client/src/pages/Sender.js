@@ -1124,6 +1124,8 @@ export default function Sender() {
 
   const dotClass = status === 'live' ? 'hud-dot live' : status === 'connecting' ? 'hud-dot connecting' : 'hud-dot';
   const statusText = status === 'live' ? `LIVE · ${viewerCount}` : status === 'connecting' ? 'WAITING' : 'READY';
+  const availableMixerAudioDevices = audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId));
+  const likelyContinuityDevice = availableMixerAudioDevices.find(d => /(continuity|iphone|ipad|apple)/i.test(d.label || ''));
 
   const has = {
     zoom:     !!(caps?.zoom?.max && caps.zoom.max > 1),
@@ -1550,17 +1552,51 @@ export default function Sender() {
             <div className="mixer-pair-card">
               <div className="mixer-pair-header">
                 <div>
-                  <div className="mixer-pair-title">Second room mic</div>
-                  <div className="mixer-pair-note">{phoneMicStatus}</div>
+                  <div className="mixer-pair-title">Add local mic/device</div>
+                  <div className="mixer-pair-note">
+                    Add USB PnP, Continuity Camera, or any mic Chrome lists here as a separate mixer channel.
+                  </div>
                 </div>
-                <button className={`obs-copy-btn${phoneMicCopied ? ' copied' : ''}`} onClick={copyPhoneMicUrl}>
-                  {phoneMicCopied ? '✓ Copied' : 'Copy phone link'}
+                <button className="device-refresh-btn" onClick={refreshDevices} disabled={refreshingDevices}>
+                  {refreshingDevices ? 'Refreshing' : 'Refresh'}
                 </button>
               </div>
-              <div className="obs-bar" style={{ marginTop: '0.55rem' }}>
-                <span className="obs-bar-url">{phoneMicUrl}</span>
-              </div>
+              {availableMixerAudioDevices.length > 0 ? (
+                <div className="local-input-list">
+                  {likelyContinuityDevice && (
+                    <button className="btn-full local-input-primary"
+                      onClick={() => addExtraAudioInput(likelyContinuityDevice.deviceId, likelyContinuityDevice.label || 'Continuity Camera Mic')}>
+                      + {likelyContinuityDevice.label || 'Continuity Camera Mic'}
+                    </button>
+                  )}
+                  {availableMixerAudioDevices
+                    .filter(d => d.deviceId !== likelyContinuityDevice?.deviceId)
+                    .map(d => (
+                      <button key={d.deviceId} className="btn-full"
+                        onClick={() => addExtraAudioInput(d.deviceId, d.label || `Mic ${d.deviceId.slice(0, 8)}`)}>
+                        + {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                      </button>
+                    ))}
+                </div>
+              ) : (
+                <div className="mixer-pair-note local-input-empty">
+                  No extra local inputs are visible right now. Connect the iPhone as Continuity Camera, then refresh devices.
+                </div>
+              )}
             </div>
+
+            <details className="custom-details mixer-phone-fallback">
+              <summary>Phone link fallback</summary>
+              <div className="custom-details-body">
+                <div className="mixer-pair-note">{phoneMicStatus}</div>
+                <button className={`btn-full${phoneMicCopied ? ' copied' : ''}`} onClick={copyPhoneMicUrl}>
+                  {phoneMicCopied ? 'Copied phone link' : 'Copy phone mic link'}
+                </button>
+                <div className="obs-bar">
+                  <span className="obs-bar-url">{phoneMicUrl}</span>
+                </div>
+              </div>
+            </details>
 
             {audioInputs.map(inp => {
               const level = levels[inp.id] || 0;
@@ -1591,7 +1627,7 @@ export default function Sender() {
                         selAudioIdRef.current = id;
                         saveAudioPreferences(window.localStorage, { deviceId: id });
                       }}>
-                      <option value="">Default microphone</option>
+                      <option value="">Default primary microphone</option>
                       {audioDevices.map(d => (
                         <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 8)}`}</option>
                       ))}
@@ -1678,19 +1714,6 @@ export default function Sender() {
               );
             })}
 
-            {audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId)).length > 0 && (
-              <details className="custom-details">
-                <summary>+ Add audio input</summary>
-                <div className="custom-details-body">
-                  {audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId)).map(d => (
-                    <button key={d.deviceId} className="btn-full" style={{ marginBottom: '0.4rem' }}
-                      onClick={() => addExtraAudioInput(d.deviceId, d.label || `Mic ${d.deviceId.slice(0, 8)}`)}>
-                      + {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            )}
             {audioInputError && <p className="lut-error">{audioInputError}</p>}
 
             <div className="cam-block" style={{ marginTop: '0.7rem' }}>

@@ -1008,6 +1008,30 @@ html, body, #root {
   line-height: 1.4;
 }
 
+.local-input-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.local-input-primary {
+  border-color: rgba(0,212,255,0.45);
+  background: rgba(0,212,255,0.1);
+  color: var(--accent2);
+}
+
+.local-input-empty {
+  margin-top: 0.65rem;
+  padding: 0.65rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mixer-phone-fallback {
+  margin-bottom: 0.65rem;
+}
+
 .mixer-strip-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
