@@ -149,6 +149,13 @@ const LUT_FRAGMENT_SRC = `
   }
 `;
 
+// WebGL clears its default drawing buffer after compositing. The visible canvas still looks
+// correct, but captureStream() can otherwise read a cleared (black) frame in Chrome and OBS.
+export const WEBGL_CAPTURE_OPTIONS = Object.freeze({
+  preserveDrawingBuffer: true,
+  alpha: false,
+});
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -479,7 +486,8 @@ export default function Sender() {
   const initGL = useCallback(() => {
     const canvas = glCanvasRef.current;
     if (!canvas || glRef.current) return;
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const gl = canvas.getContext('webgl', WEBGL_CAPTURE_OPTIONS)
+      || canvas.getContext('experimental-webgl', WEBGL_CAPTURE_OPTIONS);
     if (!gl) return;
     const program = createLutProgram(gl);
     gl.useProgram(program);

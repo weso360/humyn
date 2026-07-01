@@ -1,4 +1,8 @@
-import { parseCubeLut, buildLutAtlas } from './Sender';
+import { parseCubeLut, buildLutAtlas, WEBGL_CAPTURE_OPTIONS } from './Sender';
+
+test('preserves WebGL frames for canvas capture streams', () => {
+  expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
+});
 
 const SIMPLE_2X2X2_CUBE = `
 TITLE "Test LUT"
