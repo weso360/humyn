@@ -18,5 +18,10 @@ export function loadAudioPreferences(storage = window.localStorage) {
 }
 
 export function saveAudioPreferences(storage = window.localStorage, preference) {
-  storage.setItem(STORAGE_KEY, JSON.stringify(preference));
+  try {
+    storage.setItem(STORAGE_KEY, JSON.stringify(preference));
+    return true;
+  } catch (_) {
+    return false;
+  }
 }

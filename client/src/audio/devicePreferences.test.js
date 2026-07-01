@@ -51,4 +51,12 @@ describe('audio preference storage', () => {
     expect(loadAudioPreferences(createStorage())).toBeNull();
     expect(loadAudioPreferences(createStorage('{not valid json'))).toBeNull();
   });
+
+  test('saving is best-effort when storage rejects the write', () => {
+    const storage = {
+      setItem: jest.fn(() => { throw new Error('Storage quota exceeded'); }),
+    };
+
+    expect(() => saveAudioPreferences(storage, { deviceId: 'usb' })).not.toThrow();
+  });
 });
