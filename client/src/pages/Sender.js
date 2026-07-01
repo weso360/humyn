@@ -239,7 +239,7 @@ export default function Sender() {
   const [lutError, setLutError] = useState('');
 
   // Audio
-  const [audioPreset, setAudioPreset]         = useState(AUDIO_PRESETS[1]);
+  const [audioPreset, setAudioPreset]         = useState(AUDIO_PRESETS[0]);
   const [customAudio, setCustomAudio]         = useState({ sampleRate: 48000, channels: 2, echoCancellation: false, noiseSuppression: false, autoGainControl: false });
   const [useCustomAudio, setUseCustomAudio]   = useState(false);
 
@@ -247,6 +247,7 @@ export default function Sender() {
   const audioCtxRef       = useRef(null);
   const mixDestRef        = useRef(null); // MediaStreamAudioDestinationNode — .stream's audio track is what's sent to viewers
   const masterGainNodeRef = useRef(null);
+  const masterLimiterNodeRef = useRef(null);
   const audioNodesRef     = useRef({}); // id -> { strip, stream, type, phoneSocketId }
   const phonePeersRef     = useRef({}); // phoneSocketId -> RTCPeerConnection
   const monitorAudioElRef = useRef(null); // hidden <audio> for headphone monitoring (never sent to viewers)
@@ -269,11 +270,19 @@ export default function Sender() {
     const ctx = new Ctx();
     const dest = ctx.createMediaStreamDestination();
     const master = ctx.createGain();
+    const limiter = ctx.createDynamicsCompressor();
     master.gain.value = 1;
-    master.connect(dest);
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.12;
+    master.connect(limiter);
+    limiter.connect(dest);
     audioCtxRef.current = ctx;
     mixDestRef.current = dest;
     masterGainNodeRef.current = master;
+    masterLimiterNodeRef.current = limiter;
     return ctx;
   }, []);
 
@@ -337,7 +346,16 @@ export default function Sender() {
   const addExtraAudioInput = useCallback(async (deviceId, label) => {
     setAudioInputError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: deviceId },
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        }
+      });
       addAudioInputNode(`extra-${deviceId}-${Date.now()}`, stream, label, false, deviceId, 'device');
     } catch (err) {
       setAudioInputError('Could not open that audio device.');
@@ -1019,7 +1037,7 @@ export default function Sender() {
         setRoomTaken(false);
         if (res.token) localStorage.setItem(tokenKey, res.token);
         const { width, height, fps } = PRESETS[2];
-        startCamera(width, height, fps, 'environment', getAudioConstraints(AUDIO_PRESETS[1], {}, false), { zoom: 1, focusAuto: true, exposureAuto: true, wbPreset: 'auto', torchOn: false });
+        startCamera(width, height, fps, 'environment', getAudioConstraints(AUDIO_PRESETS[0], {}, false), { zoom: 1, focusAuto: true, exposureAuto: true, wbPreset: 'auto', torchOn: false });
       });
     });
     socket.on('create-offer', async ({ viewerId }) => {
