@@ -20,11 +20,19 @@ const ICE_SERVERS = {
   ]
 };
 
+export function resolveRemoteStream(event, currentStream, MediaStreamCtor = MediaStream) {
+  if (event.streams?.[0]) return event.streams[0];
+  const stream = currentStream || new MediaStreamCtor();
+  if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track);
+  return stream;
+}
+
 export default function Viewer() {
   const { roomId } = useParams();
   const socketRef  = useRef(null);
   const pcRef      = useRef(null);
   const videoRef   = useRef(null);
+  const remoteStreamRef = useRef(null);
 
   const [status, setStatus]   = useState('waiting'); // waiting | connecting | live | offline
   const [streamInfo, setStreamInfo] = useState(null);
@@ -52,8 +60,11 @@ export default function Viewer() {
       pcRef.current = pc;
 
       pc.ontrack = (e) => {
+        const remoteStream = resolveRemoteStream(e, remoteStreamRef.current);
+        remoteStreamRef.current = remoteStream;
         if (videoRef.current) {
-          videoRef.current.srcObject = e.streams[0];
+          videoRef.current.srcObject = remoteStream;
+          videoRef.current.play().catch(() => {});
           setStatus('live');
         }
       };
@@ -113,6 +124,7 @@ export default function Viewer() {
     // Sender disconnected
     socket.on('sender-disconnected', () => {
       setStatus('offline');
+      remoteStreamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
     });
 
