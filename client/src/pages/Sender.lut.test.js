@@ -1,4 +1,4 @@
-import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, scheduleVideoRender, selectCaptureCanvas, selectOutgoingVideoTrack, supportsBackgroundVideoPipeline, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, hasActiveVideoEffects, nextVideoBitrateCap, scheduleVideoRender, selectCaptureCanvas, selectOutgoingVideoTrack, supportsBackgroundVideoPipeline, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
@@ -54,6 +54,13 @@ test('clocks processing from camera frames instead of page animation frames', ()
 test('only enables background processing when transferable video primitives exist', () => {
   expect(supportsBackgroundVideoPipeline({ MediaStreamTrackProcessor: function () {}, MediaStreamTrackGenerator: function () {}, Worker: function () {} })).toBe(true);
   expect(supportsBackgroundVideoPipeline({ MediaStreamTrackProcessor: function () {}, Worker: function () {} })).toBe(false);
+});
+
+test('bypasses video processing when every visual effect is neutral', () => {
+  const neutral = { brightness: 1, contrast: 1, saturation: 1, lut: 'none', digitalZoom: 1, panX: 0, panY: 0, lutStrength: 1 };
+  expect(hasActiveVideoEffects(neutral, false)).toBe(false);
+  expect(hasActiveVideoEffects({ ...neutral, brightness: 1.01 }, false)).toBe(true);
+  expect(hasActiveVideoEffects({ ...neutral, lut: 'custom' }, true)).toBe(true);
 });
 
 const SIMPLE_2X2X2_CUBE = `

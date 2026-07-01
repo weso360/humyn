@@ -198,6 +198,16 @@ export const supportsBackgroundVideoPipeline = (scope = window) => Boolean(
   scope?.MediaStreamTrackProcessor && scope?.MediaStreamTrackGenerator && scope?.Worker
 );
 
+export const hasActiveVideoEffects = (settings, hasCustomLut = false) => Boolean(
+  Math.abs((settings?.brightness ?? 1) - 1) > .001
+  || Math.abs((settings?.contrast ?? 1) - 1) > .001
+  || Math.abs((settings?.saturation ?? 1) - 1) > .001
+  || Math.abs((settings?.digitalZoom ?? 1) - 1) > .001
+  || Math.abs(settings?.panX || 0) > .001
+  || Math.abs(settings?.panY || 0) > .001
+  || (settings?.lut && settings.lut !== 'none' && (settings.lut !== 'custom' || hasCustomLut))
+);
+
 function cancelVideoRender(video, handle) {
   if (!handle) return;
   if (handle.type === 'video' && typeof video?.cancelVideoFrameCallback === 'function') {
@@ -250,6 +260,7 @@ export default function Sender() {
   const streamRef  = useRef(null);
   const peersRef   = useRef({});
   const videoRef   = useRef(null);
+  const outputPreviewRef = useRef(null);
   const canvasRef  = useRef(null); // hidden base 2D canvas — brightness/contrast/saturation/zoom/pan/built-in LUT
   const glCanvasRef = useRef(null); // visible canvas — composites base canvas through the custom-LUT WebGL shader
   const transportCanvasRef = useRef(null); // hidden 2D copy of the final WebGL frame — stable captureStream source
@@ -662,9 +673,6 @@ export default function Sender() {
   useEffect(() => { selVideoIdRef.current = selVideoId; }, [selVideoId]);
   useEffect(() => { selAudioIdRef.current = selAudioId; }, [selAudioId]);
   useEffect(() => { fxRef.current = fx; }, [fx]);
-  useEffect(() => {
-    videoWorkerRef.current?.worker.postMessage({ type: 'effects', fx });
-  }, [fx]);
   useEffect(() => { presetRef.current = preset; }, [preset]);
   useEffect(() => { useCustomRef.current = useCustom; }, [useCustom]);
 
@@ -673,6 +681,7 @@ export default function Sender() {
   const drawFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    if (supportsBackgroundVideoPipeline(window)) return;
     if (video && canvas && video.videoWidth) {
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth;
@@ -926,13 +935,18 @@ export default function Sender() {
     try { await track.applyConstraints({ advanced: [c] }); } catch (_) {}
   }, []);
 
+  const stopBackgroundVideoPipeline = useCallback(() => {
+    if (!videoWorkerRef.current) return;
+    videoWorkerRef.current.worker.postMessage({ type: 'stop' });
+    videoWorkerRef.current.worker.terminate();
+    try { videoWorkerRef.current.generator.stop(); } catch (_) {}
+    videoWorkerRef.current = null;
+    processedStreamRef.current = null;
+  }, []);
+
   const startBackgroundVideoPipeline = useCallback((track) => {
     if (!supportsBackgroundVideoPipeline(window) || !track) return null;
-    if (videoWorkerRef.current) {
-      videoWorkerRef.current.worker.postMessage({ type: 'stop' });
-      videoWorkerRef.current.worker.terminate();
-      try { videoWorkerRef.current.generator.stop(); } catch (_) {}
-    }
+    stopBackgroundVideoPipeline();
     try {
       const processor = new window.MediaStreamTrackProcessor({ track });
       const generator = new window.MediaStreamTrackGenerator({ kind: 'video' });
@@ -947,12 +961,36 @@ export default function Sender() {
       generator.contentHint = 'detail';
       videoWorkerRef.current = { worker, generator };
       processedStreamRef.current = new MediaStream([generator]);
+      if (outputPreviewRef.current) {
+        outputPreviewRef.current.srcObject = processedStreamRef.current;
+        outputPreviewRef.current.play().catch(() => {});
+      }
       return generator;
     } catch (_) {
       videoWorkerRef.current = null;
       return null;
     }
-  }, []);
+  }, [stopBackgroundVideoPipeline]);
+
+  useEffect(() => {
+    const cameraTrack = streamRef.current?.getVideoTracks()[0];
+    if (!cameraTrack || !supportsBackgroundVideoPipeline(window)) return;
+    if (hasActiveVideoEffects(fx, Boolean(customLutRef.current))) {
+      if (videoWorkerRef.current) {
+        videoWorkerRef.current.worker.postMessage({ type: 'effects', fx });
+        return;
+      }
+      const processedTrack = startBackgroundVideoPipeline(cameraTrack);
+      if (processedTrack) Object.values(peersRef.current).forEach(pc => pc._videoSender?.replaceTrack(processedTrack));
+      return;
+    }
+    Object.values(peersRef.current).forEach(pc => pc._videoSender?.replaceTrack(cameraTrack));
+    stopBackgroundVideoPipeline();
+    if (outputPreviewRef.current) {
+      outputPreviewRef.current.srcObject = streamRef.current;
+      outputPreviewRef.current.play().catch(() => {});
+    }
+  }, [fx, startBackgroundVideoPipeline, stopBackgroundVideoPipeline]);
 
   const startCamera = useCallback(async (width, height, fps, facing, audioC, opts = {}) => {
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -975,6 +1013,10 @@ export default function Sender() {
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
+      if (outputPreviewRef.current) {
+        outputPreviewRef.current.srcObject = stream;
+        outputPreviewRef.current.play().catch(() => {});
+      }
 
       const vt = stream.getVideoTracks()[0];
       const s  = vt.getSettings();
@@ -1002,7 +1044,11 @@ export default function Sender() {
       if (trackCaps?.zoom?.max) setMaxZoom(Math.floor(trackCaps.zoom.max));
 
       await applyAdvanced(vt, opts);
-      startBackgroundVideoPipeline(vt);
+      if (hasActiveVideoEffects(fxRef.current, Boolean(customLutRef.current))) {
+        startBackgroundVideoPipeline(vt);
+      } else {
+        stopBackgroundVideoPipeline();
+      }
 
       // Rewire the camera's mic into the audio mixer graph (no-op if the track hasn't actually changed)
       const camLabel = useCustom ? `${customRes.label} · ${customFps}fps` : preset.label.replace(/^[^\s]+\s/, '');
@@ -1048,7 +1094,7 @@ export default function Sender() {
       });
       return null;
     }
-  }, [applyAdvanced, useCustom, customRes, customFps, preset, roomId, syncCameraAudioInput, refreshDevices, startBackgroundVideoPipeline]);
+  }, [applyAdvanced, useCustom, customRes, customFps, preset, roomId, syncCameraAudioInput, refreshDevices, startBackgroundVideoPipeline, stopBackgroundVideoPipeline]);
 
   const applyLive = useCallback(async (opts) => {
     const vt = streamRef.current?.getVideoTracks()[0];
@@ -1330,9 +1376,13 @@ export default function Sender() {
         {/* Base processing layer (brightness/contrast/zoom/pan/built-in look) — hidden, feeds the WebGL LUT pass */}
         <canvas ref={canvasRef} className="sender-raw-video" />
         <canvas ref={transportCanvasRef} className="sender-raw-video" />
+        {supportsBackgroundVideoPipeline(window) && (
+          <video ref={outputPreviewRef} autoPlay playsInline muted className="sender-canvas"
+            style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
+        )}
         {/* Final composited feed (+ custom .cube LUT) — this is what's shown and sent to viewers */}
         <canvas ref={glCanvasRef} className="sender-canvas"
-          style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
+          style={{ display: supportsBackgroundVideoPipeline(window) ? 'none' : 'block', transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
 
         {camError && (
           <div className="cam-error">
