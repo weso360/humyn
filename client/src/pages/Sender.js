@@ -8,6 +8,7 @@ import { analyseSamples, buildStreamHealth, deleteChurchPreset, loadChurchPreset
 import { getSignalUrl } from '../signalUrl';
 
 const PRESETS = [
+  { id: 'broadcast', label: '💎 Broadcast Master', desc: '1080p · 30fps · 16Mbps', width: 1920, height: 1080, fps: 30 },
   { id: 'ultra',  label: '🔥 Ultra',     desc: '4K · 60fps',    width: 3840, height: 2160, fps: 60  },
   { id: 'high',   label: '⚡ High',       desc: '1080p · 120fps',width: 1920, height: 1080, fps: 120 },
   { id: 'medium', label: '✅ Medium',     desc: '1080p · 60fps', width: 1920, height: 1080, fps: 60  },
@@ -179,6 +180,13 @@ export const selectOutgoingVideoTrack = (cameraTrack, processedTrack) => process
 export const nextVideoBitrateCap = (currentCap) =>
   Math.max(1_500_000, currentCap ? Math.round(currentCap * .7) : 5_000_000);
 
+export const getVideoEncodingProfile = ({ id, width, height, fps }) => ({
+  maxBitrate: id === 'broadcast' ? 16_000_000 : width >= 3840 ? 25_000_000 : fps > 30 ? 14_000_000 : 8_000_000,
+  maxFramerate: Math.min(Number(fps) || 30, 60),
+  degradationPreference: 'maintain-resolution',
+  contentHint: 'detail',
+});
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -236,7 +244,7 @@ export default function Sender() {
   const panYAnimRef = useRef(0);
 
   // Video
-  const [preset, setPreset]       = useState(PRESETS[2]);
+  const [preset, setPreset]       = useState(PRESETS[0]);
   const [customRes, setCustomRes] = useState(RESOLUTIONS[1]);
   const [customFps, setCustomFps] = useState(60);
   const [useCustom, setUseCustom] = useState(false);
@@ -945,7 +953,19 @@ export default function Sender() {
       Object.values(peersRef.current).forEach(pc => {
         const vTrack = selectOutgoingVideoTrack(stream.getVideoTracks()[0], processedTrack);
         const aTrack = mixedAudioTrack || stream.getAudioTracks()[0];
-        if (vTrack) pc._videoSender?.replaceTrack(vTrack);
+        if (vTrack) {
+          const profile = getVideoEncodingProfile({ id: presetRef.current.id, width: s.width, height: s.height, fps: fpsRounded });
+          vTrack.contentHint = profile.contentHint;
+          pc._videoSender?.replaceTrack(vTrack);
+          const params = pc._videoSender?.getParameters();
+          if (params) {
+            params.encodings = params.encodings?.length ? params.encodings : [{}];
+            params.encodings[0].maxBitrate = profile.maxBitrate;
+            params.encodings[0].maxFramerate = profile.maxFramerate;
+            params.degradationPreference = profile.degradationPreference;
+            pc._videoSender.setParameters(params).catch(() => {});
+          }
+        }
         if (aTrack) pc._audioSender?.replaceTrack(aTrack);
       });
 
@@ -1013,20 +1033,22 @@ export default function Sender() {
     // reserved from the start, a track that becomes ready moments later has nowhere to attach to.
     const processedTrack = getProcessedVideoTrack();
     const cameraTrack = streamRef.current?.getVideoTracks()[0];
+    const encodingProfile = getVideoEncodingProfile(presetRef.current);
     const videoTransceiver = pc.addTransceiver('video', {
       direction: 'sendonly',
-      sendEncodings: [{ maxBitrate: 8_000_000 }],
+      sendEncodings: [{ maxBitrate: encodingProfile.maxBitrate, maxFramerate: encodingProfile.maxFramerate }],
     });
     const outgoingVideoTrack = selectOutgoingVideoTrack(cameraTrack, processedTrack);
     if (outgoingVideoTrack) {
-      outgoingVideoTrack.contentHint = 'detail';
+      outgoingVideoTrack.contentHint = encodingProfile.contentHint;
       videoTransceiver.sender.replaceTrack(outgoingVideoTrack);
     }
     pc._videoSender = videoTransceiver.sender;
     const videoParams = videoTransceiver.sender.getParameters();
     videoParams.encodings = videoParams.encodings?.length ? videoParams.encodings : [{}];
-    videoParams.encodings[0].maxBitrate = 8_000_000;
-    videoParams.degradationPreference = 'maintain-resolution';
+    videoParams.encodings[0].maxBitrate = encodingProfile.maxBitrate;
+    videoParams.encodings[0].maxFramerate = encodingProfile.maxFramerate;
+    videoParams.degradationPreference = encodingProfile.degradationPreference;
     videoTransceiver.sender.setParameters(videoParams).catch(() => {});
 
     const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
@@ -1108,7 +1130,7 @@ export default function Sender() {
     socket.on('connect', () => {
       setStatus('connecting');
       socket.emit('sender-join', { roomId });
-      const { width, height, fps } = PRESETS[2];
+      const { width, height, fps } = PRESETS[0];
       startCamera(width, height, fps, 'environment', getAudioConstraints(AUDIO_PRESETS[1], {}, false), { zoom: 1, focusAuto: true, exposureAuto: true, wbPreset: 'auto', torchOn: false });
     });
     socket.on('create-offer', async ({ viewerId }) => {
@@ -1178,7 +1200,7 @@ export default function Sender() {
   }, [selAudioId, restart]);
 
   const applyPreset = async (p) => {
-    setPreset(p); setUseCustom(false);
+    setPreset(p); presetRef.current = p; setUseCustom(false);
     await startCamera(p.width, p.height, p.fps, facingMode, getAudioConstraints(audioPreset, customAudio, useCustomAudio), currentOpts());
   };
 

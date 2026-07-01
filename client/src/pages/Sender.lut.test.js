@@ -1,4 +1,4 @@
-import { parseCubeLut, buildLutAtlas, ensureTrackStream, nextVideoBitrateCap, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
@@ -31,6 +31,15 @@ test('never auto-throttles 1080p video below a usable bitrate', () => {
   expect(nextVideoBitrateCap(5_000_000)).toBe(3_500_000);
   expect(nextVideoBitrateCap(2_000_000)).toBe(1_500_000);
   expect(nextVideoBitrateCap(1_500_000)).toBe(1_500_000);
+});
+
+test('Broadcast Master locks 1080p30 to the maximum detail profile', () => {
+  expect(getVideoEncodingProfile({ id: 'broadcast', width: 1920, height: 1080, fps: 30 })).toEqual({
+    maxBitrate: 16_000_000,
+    maxFramerate: 30,
+    degradationPreference: 'maintain-resolution',
+    contentHint: 'detail',
+  });
 });
 
 const SIMPLE_2X2X2_CUBE = `
