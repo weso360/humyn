@@ -15,14 +15,15 @@ test('wraps a processed track when a viewer arrives before the camera stream', (
 test('uses the stable 2D canvas for the outgoing capture stream', () => {
   const baseCanvas = { kind: '2d' };
   const webglCanvas = { kind: 'webgl' };
-  expect(selectCaptureCanvas(baseCanvas, webglCanvas)).toBe(baseCanvas);
+  const transportCanvas = { kind: 'transport-2d' };
+  expect(selectCaptureCanvas(baseCanvas, webglCanvas, transportCanvas)).toBe(transportCanvas);
 });
 
-test('prioritises the hardware camera track for reliable WebRTC delivery', () => {
+test('sends the fully processed transport track when available', () => {
   const camera = { id: 'camera' };
-  const canvas = { id: 'canvas' };
-  expect(selectOutgoingVideoTrack(camera, canvas)).toBe(camera);
-  expect(selectOutgoingVideoTrack(null, canvas)).toBe(canvas);
+  const processed = { id: 'processed' };
+  expect(selectOutgoingVideoTrack(camera, processed)).toBe(processed);
+  expect(selectOutgoingVideoTrack(camera, null)).toBe(camera);
 });
 
 test('never auto-throttles 1080p video below a usable bitrate', () => {

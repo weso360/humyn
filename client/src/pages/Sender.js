@@ -172,9 +172,9 @@ export const ensureTrackStream = (track, stream, MediaStreamCtor = MediaStream) 
 
 // Use the 2D processing canvas for transport. Captured WebGL surfaces can produce black frames
 // in Chrome/OBS on macOS even while their local preview renders correctly.
-export const selectCaptureCanvas = (baseCanvas) => baseCanvas;
+export const selectCaptureCanvas = (_baseCanvas, _webglCanvas, transportCanvas) => transportCanvas;
 
-export const selectOutgoingVideoTrack = (cameraTrack, processedTrack) => cameraTrack || processedTrack || null;
+export const selectOutgoingVideoTrack = (cameraTrack, processedTrack) => processedTrack || cameraTrack || null;
 
 export const nextVideoBitrateCap = (currentCap) =>
   Math.max(1_500_000, currentCap ? Math.round(currentCap * .7) : 5_000_000);
@@ -224,6 +224,7 @@ export default function Sender() {
   const videoRef   = useRef(null);
   const canvasRef  = useRef(null); // hidden base 2D canvas — brightness/contrast/saturation/zoom/pan/built-in LUT
   const glCanvasRef = useRef(null); // visible canvas — composites base canvas through the custom-LUT WebGL shader
+  const transportCanvasRef = useRef(null); // hidden 2D copy of the final WebGL frame — stable captureStream source
   const glRef      = useRef(null); // { gl, program, uniforms, sourceTex, lutTex, lutSize }
   const customLutRef = useRef(null); // { width, height, pixels, size } from an uploaded .cube file
   const rafRef     = useRef(null);
@@ -716,17 +717,12 @@ export default function Sender() {
   const renderGL = useCallback(() => {
     const base = canvasRef.current;
     const glCanvas = glCanvasRef.current;
+    const transportCanvas = transportCanvasRef.current;
     const g = glRef.current;
-    if (!base || !glCanvas || !g || !base.width || !base.height) return;
+    if (!base || !glCanvas || !transportCanvas || !g || !base.width || !base.height) return;
     if (glCanvas.width !== base.width || glCanvas.height !== base.height) {
       glCanvas.width = base.width;
       glCanvas.height = base.height;
-    }
-    // Create the captured stream only once the canvas has its real dimensions — creating it while
-    // still at the default placeholder size and resizing moments later is a known Chrome bug that
-    // leaves the captured track permanently black even though the canvas itself paints fine on-screen.
-    if (!processedStreamRef.current) {
-      processedStreamRef.current = selectCaptureCanvas(base, glCanvas).captureStream(30);
     }
     const { gl, program, sourceTex, lutTex, uSource, uLut, uLutSize, uUseLut, uLutStrength } = g;
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
@@ -759,6 +755,23 @@ export default function Sender() {
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Copy the completed LUT frame into a normal 2D canvas. Chrome/OBS reliably captures this
+    // surface, while direct WebGL capture can negotiate successfully but transmit black frames.
+    if (transportCanvas.width !== glCanvas.width || transportCanvas.height !== glCanvas.height) {
+      transportCanvas.width = glCanvas.width;
+      transportCanvas.height = glCanvas.height;
+    }
+    const transportCtx = transportCanvas.getContext('2d');
+    transportCtx.drawImage(glCanvas, 0, 0, transportCanvas.width, transportCanvas.height);
+    if (!processedStreamRef.current) {
+      processedStreamRef.current = selectCaptureCanvas(base, glCanvas, transportCanvas).captureStream(30);
+      const processedTrack = processedStreamRef.current.getVideoTracks()[0];
+      if (processedTrack) {
+        processedTrack.contentHint = 'detail';
+        Object.values(peersRef.current).forEach(pc => pc._videoSender?.replaceTrack(processedTrack));
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -1229,6 +1242,7 @@ export default function Sender() {
         <video ref={videoRef} autoPlay playsInline muted className="sender-raw-video" />
         {/* Base processing layer (brightness/contrast/zoom/pan/built-in look) — hidden, feeds the WebGL LUT pass */}
         <canvas ref={canvasRef} className="sender-raw-video" />
+        <canvas ref={transportCanvasRef} className="sender-raw-video" />
         {/* Final composited feed (+ custom .cube LUT) — this is what's shown and sent to viewers */}
         <canvas ref={glCanvasRef} className="sender-canvas"
           style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
