@@ -1,4 +1,4 @@
-import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, scheduleVideoRender, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, scheduleVideoRender, selectCaptureCanvas, selectOutgoingVideoTrack, supportsBackgroundVideoPipeline, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
@@ -49,6 +49,11 @@ test('clocks processing from camera frames instead of page animation frames', ()
   expect(scheduleVideoRender(video, callback, raf)).toEqual({ type: 'video', id: 42 });
   expect(video.requestVideoFrameCallback).toHaveBeenCalledWith(callback);
   expect(raf).not.toHaveBeenCalled();
+});
+
+test('only enables background processing when transferable video primitives exist', () => {
+  expect(supportsBackgroundVideoPipeline({ MediaStreamTrackProcessor: function () {}, MediaStreamTrackGenerator: function () {}, Worker: function () {} })).toBe(true);
+  expect(supportsBackgroundVideoPipeline({ MediaStreamTrackProcessor: function () {}, Worker: function () {} })).toBe(false);
 });
 
 const SIMPLE_2X2X2_CUBE = `

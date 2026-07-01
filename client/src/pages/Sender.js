@@ -194,6 +194,10 @@ export function scheduleVideoRender(video, callback, requestFrame = requestAnima
   return { type: 'raf', id: requestFrame(callback) };
 }
 
+export const supportsBackgroundVideoPipeline = (scope = window) => Boolean(
+  scope?.MediaStreamTrackProcessor && scope?.MediaStreamTrackGenerator && scope?.Worker
+);
+
 function cancelVideoRender(video, handle) {
   if (!handle) return;
   if (handle.type === 'video' && typeof video?.cancelVideoFrameCallback === 'function') {
@@ -254,6 +258,7 @@ export default function Sender() {
   const rafRef     = useRef(null);
   const fxRef      = useRef({ brightness: 1, contrast: 1, saturation: 1, lut: 'none', digitalZoom: 1, panX: 0, panY: 0, lutStrength: 1 });
   const processedStreamRef = useRef(null);
+  const videoWorkerRef = useRef(null);
   // Smoothed (eased) values the draw loop actually uses — chase the slider targets in fxRef for a fluid zoom/pan feel
   const zoomAnimRef = useRef(1);
   const panXAnimRef = useRef(0);
@@ -657,6 +662,9 @@ export default function Sender() {
   useEffect(() => { selVideoIdRef.current = selVideoId; }, [selVideoId]);
   useEffect(() => { selAudioIdRef.current = selAudioId; }, [selAudioId]);
   useEffect(() => { fxRef.current = fx; }, [fx]);
+  useEffect(() => {
+    videoWorkerRef.current?.worker.postMessage({ type: 'effects', fx });
+  }, [fx]);
   useEffect(() => { presetRef.current = preset; }, [preset]);
   useEffect(() => { useCustomRef.current = useCustom; }, [useCustom]);
 
@@ -851,6 +859,7 @@ export default function Sender() {
         return;
       }
       customLutRef.current = buildLutAtlas(parsed);
+      videoWorkerRef.current?.worker.postMessage({ type: 'lut', lut: customLutRef.current });
       if (glRef.current) glRef.current.lutSize = 0; // force re-upload to GPU next frame
       setCustomLutName(file.name);
       setFx(f => ({ ...f, lut: 'custom' }));
@@ -861,9 +870,19 @@ export default function Sender() {
 
   const removeLut = useCallback(() => {
     customLutRef.current = null;
+    videoWorkerRef.current?.worker.postMessage({ type: 'lut', lut: null });
     setCustomLutName('');
     setLutError('');
     setFx(f => (f.lut === 'custom' ? { ...f, lut: 'none' } : f));
+  }, []);
+
+  useEffect(() => () => {
+    if (videoWorkerRef.current) {
+      videoWorkerRef.current.worker.postMessage({ type: 'stop' });
+      videoWorkerRef.current.worker.terminate();
+      try { videoWorkerRef.current.generator.stop(); } catch (_) {}
+      videoWorkerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -905,6 +924,34 @@ export default function Sender() {
     if (opts.wbPreset !== 'auto')   c.colorTemperature = Number(opts.wbPreset);
     if (opts.torchOn !== undefined) c.torch = opts.torchOn;
     try { await track.applyConstraints({ advanced: [c] }); } catch (_) {}
+  }, []);
+
+  const startBackgroundVideoPipeline = useCallback((track) => {
+    if (!supportsBackgroundVideoPipeline(window) || !track) return null;
+    if (videoWorkerRef.current) {
+      videoWorkerRef.current.worker.postMessage({ type: 'stop' });
+      videoWorkerRef.current.worker.terminate();
+      try { videoWorkerRef.current.generator.stop(); } catch (_) {}
+    }
+    try {
+      const processor = new window.MediaStreamTrackProcessor({ track });
+      const generator = new window.MediaStreamTrackGenerator({ kind: 'video' });
+      const worker = new Worker(`${process.env.PUBLIC_URL || ''}/videoProcessor.worker.js`);
+      worker.postMessage({
+        type: 'start',
+        readable: processor.readable,
+        writable: generator.writable,
+        fx: fxRef.current,
+        lut: customLutRef.current,
+      }, [processor.readable, generator.writable]);
+      generator.contentHint = 'detail';
+      videoWorkerRef.current = { worker, generator };
+      processedStreamRef.current = new MediaStream([generator]);
+      return generator;
+    } catch (_) {
+      videoWorkerRef.current = null;
+      return null;
+    }
   }, []);
 
   const startCamera = useCallback(async (width, height, fps, facing, audioC, opts = {}) => {
@@ -955,6 +1002,7 @@ export default function Sender() {
       if (trackCaps?.zoom?.max) setMaxZoom(Math.floor(trackCaps.zoom.max));
 
       await applyAdvanced(vt, opts);
+      startBackgroundVideoPipeline(vt);
 
       // Rewire the camera's mic into the audio mixer graph (no-op if the track hasn't actually changed)
       const camLabel = useCustom ? `${customRes.label} · ${customFps}fps` : preset.label.replace(/^[^\s]+\s/, '');
@@ -1000,7 +1048,7 @@ export default function Sender() {
       });
       return null;
     }
-  }, [applyAdvanced, useCustom, customRes, customFps, preset, roomId, syncCameraAudioInput, refreshDevices]);
+  }, [applyAdvanced, useCustom, customRes, customFps, preset, roomId, syncCameraAudioInput, refreshDevices, startBackgroundVideoPipeline]);
 
   const applyLive = useCallback(async (opts) => {
     const vt = streamRef.current?.getVideoTracks()[0];
