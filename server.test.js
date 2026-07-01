@@ -20,6 +20,9 @@ const connect = () => ioClient(`http://localhost:${port}`, { transports: ['webso
 const sendJoin = (socket, payload) =>
   new Promise((resolve) => socket.emit('sender-join', payload, resolve));
 
+const sendPhoneJoin = (socket, payload) =>
+  new Promise((resolve) => socket.emit('phone-mic-join', payload, resolve));
+
 describe('sender-join hijack protection', () => {
   test('first sender to join a room gets ok:true and a token', async () => {
     const a = connect();
@@ -75,5 +78,68 @@ describe('sender-join hijack protection', () => {
     const res = await sendJoin(b, { roomId: 'room-4' }); // no token — room should be free now
     expect(res.ok).toBe(true);
     b.close();
+  });
+});
+
+describe('phone mic contributor signaling', () => {
+  test('joining a phone mic notifies the active sender to create an offer', async () => {
+    const sender = connect();
+    await new Promise((resolve) => sender.on('connect', resolve));
+    await sendJoin(sender, { roomId: 'room-phone-1' });
+
+    const offerRequest = new Promise((resolve) => sender.on('phone-mic-request-offer', resolve));
+
+    const phone = connect();
+    await new Promise((resolve) => phone.on('connect', resolve));
+    const join = await sendPhoneJoin(phone, { roomId: 'room-phone-1', contributorId: 'phone-a', label: 'Balcony Mic' });
+
+    expect(join.ok).toBe(true);
+    expect(join.hostAvailable).toBe(true);
+    await expect(offerRequest).resolves.toMatchObject({
+      contributorId: 'phone-a',
+      label: 'Balcony Mic',
+    });
+
+    sender.close();
+    phone.close();
+  });
+
+  test('a sender joining later receives offer requests for waiting phone mics', async () => {
+    const phone = connect();
+    await new Promise((resolve) => phone.on('connect', resolve));
+    const join = await sendPhoneJoin(phone, { roomId: 'room-phone-2', contributorId: 'phone-b' });
+    expect(join.hostAvailable).toBe(false);
+
+    const sender = connect();
+    await new Promise((resolve) => sender.on('connect', resolve));
+    const offerRequest = new Promise((resolve) => sender.on('phone-mic-request-offer', resolve));
+    await sendJoin(sender, { roomId: 'room-phone-2' });
+
+    await expect(offerRequest).resolves.toMatchObject({
+      contributorId: 'phone-b',
+      label: 'Room Mic',
+    });
+
+    sender.close();
+    phone.close();
+  });
+
+  test('disconnecting a phone mic notifies the sender', async () => {
+    const sender = connect();
+    await new Promise((resolve) => sender.on('connect', resolve));
+    await sendJoin(sender, { roomId: 'room-phone-3' });
+
+    const phone = connect();
+    await new Promise((resolve) => phone.on('connect', resolve));
+    const join = await sendPhoneJoin(phone, { roomId: 'room-phone-3', contributorId: 'phone-c' });
+
+    const left = new Promise((resolve) => sender.on('phone-mic-left', resolve));
+    phone.close();
+
+    await expect(left).resolves.toMatchObject({
+      contributorId: join.contributorId,
+    });
+
+    sender.close();
   });
 });
