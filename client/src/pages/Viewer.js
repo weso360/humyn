@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import { getSignalUrl } from '../signalUrl';
 
 // See matching comment in Sender.js — TURN fallback for networks where a direct P2P path fails.
 const ICE_SERVERS = {
@@ -37,9 +38,7 @@ export default function Viewer() {
   };
 
   useEffect(() => {
-    const SIGNAL_URL = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : `${window.location.protocol}//${window.location.hostname}:3001`;
+    const SIGNAL_URL = getSignalUrl();
     const socket = io(SIGNAL_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 

@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
+import { createChannelStrip, CHANNEL_PRESETS, DEFAULT_CHANNEL_SETTINGS } from '../audio/channelStrip';
+import { choosePreferredInput, loadAudioPreferences, saveAudioPreferences } from '../audio/devicePreferences';
+import { analyseSamples, buildStreamHealth, deleteChurchPreset, loadChurchPresets, saveChurchPreset } from '../audio/productionAudio';
+import { getSignalUrl } from '../signalUrl';
 
 const PRESETS = [
   { id: 'ultra',  label: '🔥 Ultra',     desc: '4K · 60fps',    width: 3840, height: 2160, fps: 60  },
@@ -41,6 +45,13 @@ const WB_PRESETS = [
 ];
 
 const ZOOM_STEPS = [1, 2, 3, 5];
+const CHANNEL_STRIP_PRESET_OPTIONS = [
+  { id: 'flat', label: 'Flat' },
+  { id: 'speech', label: 'Speech' },
+  { id: 'vocal', label: 'Vocal' },
+  { id: 'instrument', label: 'Instrument' },
+  { id: 'room', label: 'Room' },
+];
 
 // Software LUT-style looks — layered on top of the user's brightness/contrast/saturation sliders
 const LUT_PRESETS = [
@@ -239,23 +250,35 @@ export default function Sender() {
   const [lutError, setLutError] = useState('');
 
   // Audio
-  const [audioPreset, setAudioPreset]         = useState(AUDIO_PRESETS[1]);
+  const [audioPreset, setAudioPreset]         = useState(AUDIO_PRESETS[0]);
   const [customAudio, setCustomAudio]         = useState({ sampleRate: 48000, channels: 2, echoCancellation: false, noiseSuppression: false, autoGainControl: false });
   const [useCustomAudio, setUseCustomAudio]   = useState(false);
 
   // Audio mixer — multiple inputs (camera mic + any extras) mixed via Web Audio into one output track
   const audioCtxRef       = useRef(null);
   const mixDestRef        = useRef(null); // MediaStreamAudioDestinationNode — .stream's audio track is what's sent to viewers
+  const pflDestRef        = useRef(null); // isolated pre-fader listen bus; never sent to viewers
   const masterGainNodeRef = useRef(null);
-  const audioNodesRef     = useRef({}); // id -> { source, gainNode, analyser, stream }
+  const masterLimiterNodeRef = useRef(null);
+  const masterAnalyserNodeRef = useRef(null);
+  const audioNodesRef     = useRef({}); // id -> { strip, stream, type, phoneSocketId }
+  const phonePeersRef     = useRef({}); // phoneSocketId -> RTCPeerConnection
   const monitorAudioElRef = useRef(null); // hidden <audio> for headphone monitoring (never sent to viewers)
-  const [audioInputs, setAudioInputs]         = useState([]); // [{ id, label, gain, muted, isCamera }]
+  const [audioInputs, setAudioInputs]         = useState([]); // [{ id, label, gain, muted, settings, isCamera, type }]
+  const audioInputsRef                        = useRef([]);
   const [levels, setLevels]                   = useState({}); // id -> 0..1 meter level
+  const [meterMetrics, setMeterMetrics]       = useState({});
   const [masterGain, setMasterGain]           = useState(1);
+  const [pflInputId, setPflInputId]           = useState(null);
+  const [churchPresets, setChurchPresets]     = useState(() => loadChurchPresets(window.localStorage));
+  const [calibrationOn, setCalibrationOn]     = useState(false);
+  const calibrationRef                        = useRef(null);
   const [monitorEnabled, setMonitorEnabled]   = useState(false);
   const [monitorDeviceId, setMonitorDeviceId] = useState('');
   const [audioOutputDevices, setAudioOutputDevices] = useState([]);
   const [audioInputError, setAudioInputError] = useState('');
+  const [phoneMicStatus, setPhoneMicStatus]   = useState('No room mic connected yet.');
+  const [phoneMicCopied, setPhoneMicCopied]   = useState(false);
   const CAMERA_MIC_ID = 'camera-mic';
 
   const ensureAudioGraph = useCallback(() => {
@@ -264,39 +287,75 @@ export default function Sender() {
     if (!Ctx) return null;
     const ctx = new Ctx();
     const dest = ctx.createMediaStreamDestination();
+    const pflDest = ctx.createMediaStreamDestination();
     const master = ctx.createGain();
+    const limiter = ctx.createDynamicsCompressor();
+    const masterAnalyser = ctx.createAnalyser();
+    masterAnalyser.fftSize = 2048;
     master.gain.value = 1;
-    master.connect(dest);
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.12;
+    master.connect(limiter);
+    limiter.connect(masterAnalyser);
+    masterAnalyser.connect(dest);
     audioCtxRef.current = ctx;
     mixDestRef.current = dest;
+    pflDestRef.current = pflDest;
     masterGainNodeRef.current = master;
+    masterLimiterNodeRef.current = limiter;
+    masterAnalyserNodeRef.current = masterAnalyser;
     return ctx;
   }, []);
 
   const removeAudioInputNode = useCallback((id) => {
     const n = audioNodesRef.current[id];
     if (n) {
-      try { n.source.disconnect(); n.gainNode.disconnect(); n.analyser.disconnect(); } catch (_) {}
-      n.stream.getTracks().forEach(t => t.stop());
+      try { n.strip.dispose(); } catch (_) {}
+      if (n.phoneSocketId && phonePeersRef.current[n.phoneSocketId]) {
+        phonePeersRef.current[n.phoneSocketId].close();
+        delete phonePeersRef.current[n.phoneSocketId];
+      }
       delete audioNodesRef.current[id];
     }
+    setPflInputId(current => current === id ? null : current);
     setAudioInputs(prev => prev.filter(i => i.id !== id));
   }, []);
 
-  const addAudioInputNode = useCallback((id, stream, label, isCamera, deviceId) => {
+  const addAudioInputNode = useCallback((id, stream, label, isCamera, deviceId, type = 'device', initialSettings = {}, phoneSocketId = null) => {
     const ctx = ensureAudioGraph();
     const track = stream.getAudioTracks()[0];
     if (!ctx || !track) return;
-    const source = ctx.createMediaStreamSource(stream);
-    const gainNode = ctx.createGain();
-    gainNode.gain.value = 1;
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(gainNode);
-    gainNode.connect(analyser);
-    gainNode.connect(masterGainNodeRef.current);
-    audioNodesRef.current[id] = { source, gainNode, analyser, stream };
-    setAudioInputs(prev => [...prev.filter(i => i.id !== id), { id, label, gain: 1, muted: false, isCamera, deviceId }]);
+    const existingRow = audioInputsRef.current.find(input => input.id === id);
+    const strip = createChannelStrip(ctx, stream, {
+      id,
+      kind: type,
+      stopTracks: !isCamera,
+      initialSettings: existingRow?.settings || initialSettings,
+    });
+    strip.output.connect(masterGainNodeRef.current);
+    const gain = existingRow?.gain ?? 1;
+    const muted = existingRow?.muted ?? false;
+    strip.setFader(gain);
+    strip.setMuted(muted);
+    audioNodesRef.current[id] = { strip, stream, type, phoneSocketId };
+    setAudioInputs(prev => [
+      ...prev.filter(i => i.id !== id),
+      {
+        id,
+        label,
+        gain,
+        muted,
+        isCamera,
+        deviceId,
+        type,
+        phoneSocketId,
+        canRemove: !isCamera,
+        settings: strip.getSettings(),
+      }
+    ]);
   }, [ensureAudioGraph]);
 
   // Rewires the camera's own mic into the mixer whenever startCamera gets a fresh track (new device/restart)
@@ -306,14 +365,23 @@ export default function Sender() {
     if (!track) { if (existing) removeAudioInputNode(CAMERA_MIC_ID); return; }
     if (existing && existing.stream.getAudioTracks()[0] === track) return; // unchanged, no-op
     if (existing) removeAudioInputNode(CAMERA_MIC_ID);
-    addAudioInputNode(CAMERA_MIC_ID, stream, label || 'Camera Mic', true, track.getSettings().deviceId);
+    addAudioInputNode(CAMERA_MIC_ID, stream, label || 'Camera Mic', true, track.getSettings().deviceId, 'camera');
   }, [addAudioInputNode, removeAudioInputNode]);
 
   const addExtraAudioInput = useCallback(async (deviceId, label) => {
     setAudioInputError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
-      addAudioInputNode(`extra-${deviceId}-${Date.now()}`, stream, label, false, deviceId);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: deviceId },
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        }
+      });
+      addAudioInputNode(`extra-${deviceId}-${Date.now()}`, stream, label, false, deviceId, 'device');
     } catch (err) {
       setAudioInputError('Could not open that audio device.');
     }
@@ -321,11 +389,31 @@ export default function Sender() {
 
   // Keep each GainNode's actual gain in sync with the mute/volume state (single source of truth)
   useEffect(() => {
+    audioInputsRef.current = audioInputs;
     audioInputs.forEach(inp => {
       const n = audioNodesRef.current[inp.id];
-      if (n) n.gainNode.gain.value = inp.muted ? 0 : inp.gain;
+      if (!n) return;
+      n.strip.setFader(inp.gain);
+      n.strip.setMuted(inp.muted);
+      Object.entries(inp.settings || {}).forEach(([name, value]) => {
+        if (name === 'preset') return;
+        n.strip.setSetting(name, value);
+      });
     });
   }, [audioInputs]);
+
+  useEffect(() => {
+    Object.entries(audioNodesRef.current).forEach(([id, node]) => {
+      if (node.pflConnected) {
+        try { node.strip.nodes.recombine.disconnect(pflDestRef.current); } catch (_) {}
+        node.pflConnected = false;
+      }
+      if (id === pflInputId && pflDestRef.current) {
+        node.strip.nodes.recombine.connect(pflDestRef.current);
+        node.pflConnected = true;
+      }
+    });
+  }, [pflInputId, audioInputs.length]);
 
   useEffect(() => {
     if (masterGainNodeRef.current) masterGainNodeRef.current.gain.value = masterGain;
@@ -334,15 +422,66 @@ export default function Sender() {
   // Poll analyser levels for the per-input meters (throttled — full 60fps isn't needed for a VU meter)
   useEffect(() => {
     const id = setInterval(() => {
-      const next = {};
+      const next = {}, metrics = {};
       Object.entries(audioNodesRef.current).forEach(([key, n]) => {
-        const buf = new Uint8Array(n.analyser.frequencyBinCount);
-        n.analyser.getByteFrequencyData(buf);
-        next[key] = buf.reduce((a, b) => a + b, 0) / buf.length / 255;
+        const analyser = n.strip.analyser;
+        const meterBuf = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(meterBuf);
+        next[key] = meterBuf.reduce((a, b) => a + b, 0) / meterBuf.length / 255;
+        const timeBuf = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(timeBuf);
+        metrics[key] = analyseSamples(timeBuf);
+        n.strip.tickGate(metrics[key].rms);
       });
+      const masterAnalyser = masterAnalyserNodeRef.current;
+      if (masterAnalyser) {
+        const masterBuf = new Float32Array(masterAnalyser.fftSize);
+        masterAnalyser.getFloatTimeDomainData(masterBuf);
+        metrics.master = analyseSamples(masterBuf);
+      }
       setLevels(next);
+      setMeterMetrics(metrics);
     }, 120);
     return () => clearInterval(id);
+  }, []);
+
+  const toggleCalibrationTone = useCallback(() => {
+    const ctx = ensureAudioGraph();
+    if (!ctx) return;
+    if (calibrationRef.current) {
+      try { calibrationRef.current.osc.stop(); } catch (_) {}
+      calibrationRef.current = null;
+      setCalibrationOn(false);
+      return;
+    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 1000;
+    gain.gain.value = .1;
+    osc.connect(gain); gain.connect(masterGainNodeRef.current); osc.start();
+    calibrationRef.current = { osc, gain };
+    setCalibrationOn(true);
+  }, [ensureAudioGraph]);
+
+  useEffect(() => () => {
+    if (calibrationRef.current) {
+      try { calibrationRef.current.osc.stop(); } catch (_) {}
+      calibrationRef.current = null;
+    }
+  }, []);
+
+  const saveCurrentChurchPreset = useCallback(() => {
+    const name = window.prompt('Name this church audio preset', 'Sunday Service');
+    if (!name) return;
+    setChurchPresets(saveChurchPreset(window.localStorage, name, audioInputsRef.current, masterGain));
+  }, [masterGain]);
+
+  const applyChurchPreset = useCallback((preset) => {
+    setMasterGain(preset.masterGain ?? 1);
+    setAudioInputs(prev => prev.map(input => {
+      const saved = preset.inputs?.find(item => item.deviceId === input.deviceId || item.label === input.label);
+      return saved ? { ...input, gain: saved.gain, muted: saved.muted, settings: { ...DEFAULT_CHANNEL_SETTINGS, ...saved.settings } } : input;
+    }));
   }, []);
 
   // Headphone monitoring — plays the same mix sent to viewers, routed to a chosen output device,
@@ -359,16 +498,42 @@ export default function Sender() {
   useEffect(() => {
     const el = monitorAudioElRef.current;
     if (!el || !mixDestRef.current) return;
-    el.srcObject = mixDestRef.current.stream;
+    el.srcObject = pflInputId && pflDestRef.current ? pflDestRef.current.stream : mixDestRef.current.stream;
     el.muted = !monitorEnabled;
     if (monitorEnabled) el.play().catch(() => {});
-  }, [monitorEnabled, audioInputs.length]);
+  }, [monitorEnabled, audioInputs.length, pflInputId]);
 
   useEffect(() => {
     const el = monitorAudioElRef.current;
     if (!el || typeof el.setSinkId !== 'function' || !monitorDeviceId) return;
     el.setSinkId(monitorDeviceId).catch(() => {});
   }, [monitorDeviceId]);
+
+  const updateAudioInput = useCallback((id, updater) => {
+    setAudioInputs(prev => prev.map(input => input.id === id ? updater(input) : input));
+  }, []);
+
+  const updateAudioInputSetting = useCallback((id, name, value) => {
+    updateAudioInput(id, (input) => ({
+      ...input,
+      settings: {
+        ...input.settings,
+        [name]: value,
+      }
+    }));
+  }, [updateAudioInput]);
+
+  const applyAudioInputPreset = useCallback((id, presetId) => {
+    const presetSettings = CHANNEL_PRESETS[presetId] || {};
+    updateAudioInput(id, (input) => ({
+      ...input,
+      settings: {
+        ...DEFAULT_CHANNEL_SETTINGS,
+        ...presetSettings,
+        preset: presetId,
+      }
+    }));
+  }, [updateAudioInput]);
 
   // Device selection
   const [videoDevices, setVideoDevices] = useState([]);
@@ -384,9 +549,18 @@ export default function Sender() {
     setRefreshingDevices(true);
     try {
       const devs = await navigator.mediaDevices.enumerateDevices();
-      setVideoDevices(devs.filter(d => d.kind === 'videoinput'));
-      setAudioDevices(devs.filter(d => d.kind === 'audioinput'));
+      const nextVideoDevices = devs.filter(d => d.kind === 'videoinput');
+      const nextAudioDevices = devs.filter(d => d.kind === 'audioinput');
+      setVideoDevices(nextVideoDevices);
+      setAudioDevices(nextAudioDevices);
       setAudioOutputDevices(devs.filter(d => d.kind === 'audiooutput'));
+      const preferred = choosePreferredInput(nextAudioDevices, loadAudioPreferences());
+      const currentStillExists = nextAudioDevices.some(device => device.deviceId === selAudioIdRef.current);
+      if (!currentStillExists) {
+        const nextId = preferred?.deviceId || '';
+        setSelAudioId(nextId);
+        selAudioIdRef.current = nextId;
+      }
     } catch (_) {}
     setRefreshingDevices(false);
   }, []);
@@ -434,10 +608,19 @@ export default function Sender() {
     setViewerUrl(`${protocol}//${hostWithPort}/view/${roomId}`);
   }, [roomId]);
 
+  const phoneMicUrl = viewerUrl.replace('/view/', '/mic/');
+
   const copyUrl = () => {
     navigator.clipboard.writeText(viewerUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
+  const copyPhoneMicUrl = () => {
+    navigator.clipboard.writeText(phoneMicUrl).then(() => {
+      setPhoneMicCopied(true);
+      setTimeout(() => setPhoneMicCopied(false), 2000);
     }).catch(() => {});
   };
 
@@ -879,10 +1062,59 @@ export default function Sender() {
     return pc;
   }, [startStatsPolling, stopStatsPolling, getProcessedVideoTrack]);
 
+  const removePhoneContributor = useCallback((phoneSocketId) => {
+    const audioInputId = `phone-${phoneSocketId}`;
+    if (phonePeersRef.current[phoneSocketId]) {
+      phonePeersRef.current[phoneSocketId].close();
+      delete phonePeersRef.current[phoneSocketId];
+    }
+    if (audioNodesRef.current[audioInputId]) {
+      removeAudioInputNode(audioInputId);
+    }
+    setPhoneMicStatus('Room mic disconnected.');
+  }, [removeAudioInputNode]);
+
+  const createPhonePeer = useCallback(({ phoneSocketId, contributorId, label }) => {
+    if (phonePeersRef.current[phoneSocketId]) return phonePeersRef.current[phoneSocketId];
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    phonePeersRef.current[phoneSocketId] = pc;
+    pc.ontrack = (event) => {
+      const [stream] = event.streams;
+      if (!stream) return;
+      addAudioInputNode(
+        `phone-${phoneSocketId}`,
+        stream,
+        label || 'Room Mic',
+        false,
+        '',
+        'phone',
+        { ...CHANNEL_PRESETS.room, preset: 'room', highPassEnabled: true, reverbEnabled: false },
+        phoneSocketId
+      );
+      setPhoneMicStatus(`${label || 'Room mic'} connected and live in the mix.`);
+    };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socketRef.current?.emit('phone-mic-ice-candidate', {
+          targetId: phoneSocketId,
+          contributorId,
+          candidate: event.candidate,
+        });
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        setPhoneMicStatus(`${label || 'Room mic'} connected.`);
+      }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+        removePhoneContributor(phoneSocketId);
+      }
+    };
+    return pc;
+  }, [addAudioInputNode, removePhoneContributor]);
+
   useEffect(() => {
-    const SIGNAL_URL = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : `${window.location.protocol}//${window.location.hostname}:3001`;
+    const SIGNAL_URL = getSignalUrl();
     const socket = io(SIGNAL_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
@@ -906,6 +1138,27 @@ export default function Sender() {
       const pc = peersRef.current[fromId];
       if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
     });
+    socket.on('phone-mic-request-offer', async ({ phoneSocketId, contributorId, label }) => {
+      const pc = createPhonePeer({ phoneSocketId, contributorId, label });
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+      await pc.setLocalDescription(offer);
+      socket.emit('phone-mic-offer', { phoneSocketId, contributorId, sdp: pc.localDescription });
+    });
+    socket.on('phone-mic-answer', async ({ phoneSocketId, sdp }) => {
+      const pc = phonePeersRef.current[phoneSocketId];
+      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    });
+    socket.on('phone-mic-ice-candidate', async ({ fromId, candidate }) => {
+      const pc = phonePeersRef.current[fromId];
+      if (pc) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (_) {}
+      }
+    });
+    socket.on('phone-mic-left', ({ phoneSocketId }) => {
+      removePhoneContributor(phoneSocketId);
+    });
 
     return () => {
       Object.values(perPeerStatsRef.current).forEach(b => clearInterval(b.timer));
@@ -914,11 +1167,14 @@ export default function Sender() {
       recorderRef.current?.stop();
       Object.values(peersRef.current).forEach(pc => pc.close());
       peersRef.current = {};
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const phonePeerIds = Object.keys(phonePeersRef.current);
+      phonePeerIds.forEach(removePhoneContributor);
       streamRef.current?.getTracks().forEach(t => t.stop());
       socket.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [createPeer, createPhonePeer, roomId, removePhoneContributor]);
 
   const currentOpts = useCallback(() => ({ zoom, focusAuto, focusDist, exposureAuto, exposureComp, wbPreset, torchOn }), [zoom, focusAuto, focusDist, exposureAuto, exposureComp, wbPreset, torchOn]);
 
@@ -927,6 +1183,12 @@ export default function Sender() {
     const audioC = getAudioConstraints(audioPreset, customAudio, useCustomAudio);
     await startCamera(width, height, fps, facingMode, audioC, { ...currentOpts(), ...overrides });
   }, [getActive, getAudioConstraints, audioPreset, customAudio, useCustomAudio, facingMode, startCamera, currentOpts]);
+
+  useEffect(() => {
+    const currentDeviceId = streamRef.current?.getAudioTracks?.()[0]?.getSettings?.().deviceId;
+    if (!selAudioId || !currentDeviceId || selAudioId === currentDeviceId) return;
+    restart();
+  }, [selAudioId, restart]);
 
   const applyPreset = async (p) => {
     setPreset(p); setUseCustom(false);
@@ -964,6 +1226,16 @@ export default function Sender() {
 
   const dotClass = status === 'live' ? 'hud-dot live' : status === 'connecting' ? 'hud-dot connecting' : 'hud-dot';
   const statusText = status === 'live' ? `LIVE · ${viewerCount}` : status === 'connecting' ? 'WAITING' : 'READY';
+  const masterMeter = meterMetrics.master || { peakDb: -Infinity, rmsDb: -Infinity, clipping: false };
+  const streamHealth = buildStreamHealth({
+    status, viewerCount, bitrateMbps: connQuality?.bitrate || 0,
+    peakDb: masterMeter.peakDb, clipping: masterMeter.clipping, videoReady: Boolean(actualRes),
+  });
+  const audioLatencyMs = audioCtxRef.current
+    ? Math.round(((audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0)) * 1000)
+    : 0;
+  const availableMixerAudioDevices = audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId));
+  const likelyContinuityDevice = availableMixerAudioDevices.find(d => /(continuity|iphone|ipad|apple)/i.test(d.label || ''));
 
   const has = {
     zoom:     !!(caps?.zoom?.max && caps.zoom.max > 1),
@@ -1379,56 +1651,183 @@ export default function Sender() {
             {/* ── AUDIO MIXER — multiple inputs, individually gained/muted, mixed into one output track ── */}
             <div className="section-label" style={{ marginTop: '1rem', marginBottom: '0.4rem' }}>Audio Mixer</div>
 
+            <div className="mixer-pair-card">
+              <div className="mixer-pair-header">
+                <div>
+                  <div className="mixer-pair-title">Add local mic/device</div>
+                  <div className="mixer-pair-note">
+                    Add USB PnP, Continuity Camera, or any mic Chrome lists here as a separate mixer channel.
+                  </div>
+                </div>
+                <button className="device-refresh-btn" onClick={refreshDevices} disabled={refreshingDevices}>
+                  {refreshingDevices ? 'Refreshing' : 'Refresh'}
+                </button>
+              </div>
+              {availableMixerAudioDevices.length > 0 ? (
+                <div className="local-input-list">
+                  {likelyContinuityDevice && (
+                    <button className="btn-full local-input-primary"
+                      onClick={() => addExtraAudioInput(likelyContinuityDevice.deviceId, likelyContinuityDevice.label || 'Continuity Camera Mic')}>
+                      + {likelyContinuityDevice.label || 'Continuity Camera Mic'}
+                    </button>
+                  )}
+                  {availableMixerAudioDevices
+                    .filter(d => d.deviceId !== likelyContinuityDevice?.deviceId)
+                    .map(d => (
+                      <button key={d.deviceId} className="btn-full"
+                        onClick={() => addExtraAudioInput(d.deviceId, d.label || `Mic ${d.deviceId.slice(0, 8)}`)}>
+                        + {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
+                      </button>
+                    ))}
+                </div>
+              ) : (
+                <div className="mixer-pair-note local-input-empty">
+                  No extra local inputs are visible right now. Connect the iPhone as Continuity Camera, then refresh devices.
+                </div>
+              )}
+            </div>
+
+            <details className="custom-details mixer-phone-fallback">
+              <summary>Phone link fallback</summary>
+              <div className="custom-details-body">
+                <div className="mixer-pair-note">{phoneMicStatus}</div>
+                <button className={`btn-full${phoneMicCopied ? ' copied' : ''}`} onClick={copyPhoneMicUrl}>
+                  {phoneMicCopied ? 'Copied phone link' : 'Copy phone mic link'}
+                </button>
+                <div className="obs-bar">
+                  <span className="obs-bar-url">{phoneMicUrl}</span>
+                </div>
+              </div>
+            </details>
+
             {audioInputs.map(inp => {
               const level = levels[inp.id] || 0;
               return (
                 <div key={inp.id} className="mixer-row">
                   <div className="mixer-row-top">
                     <span className="mixer-label">{inp.isCamera ? '📷 ' : '🎚 '}{inp.label}</span>
-                    <div className="mixer-row-actions">
+                  <div className="mixer-row-actions">
+                      <button className={`mixer-solo-btn${pflInputId === inp.id ? ' on' : ''}`}
+                        title="Pre-fader listen in headphones (does not change the broadcast)"
+                        onClick={() => setPflInputId(current => current === inp.id ? null : inp.id)}>
+                        PFL
+                      </button>
                       <button className={`mixer-mute-btn${inp.muted ? ' on' : ''}`}
-                        onClick={() => setAudioInputs(prev => prev.map(i => i.id === inp.id ? { ...i, muted: !i.muted } : i))}>
+                        onClick={() => updateAudioInput(inp.id, (input) => ({ ...input, muted: !input.muted }))}>
                         {inp.muted ? '🔇' : '🔊'}
                       </button>
-                      <button className="mixer-remove-btn" onClick={() => removeAudioInputNode(inp.id)} aria-label="Remove input">✕</button>
+                      {inp.canRemove !== false && (
+                        <button className="mixer-remove-btn" onClick={() => removeAudioInputNode(inp.id)} aria-label="Remove input">✕</button>
+                      )}
                     </div>
                   </div>
                   <div className="mixer-meter-track">
-                    <div className="mixer-meter-fill" style={{ width: `${Math.min(100, level * 130)}%` }} />
+                    <div className={`mixer-meter-fill${meterMetrics[inp.id]?.clipping ? ' clipping' : ''}`} style={{ width: `${Math.min(100, level * 130)}%` }} />
+                  </div>
+                  <div className={`mixer-meter-readout${meterMetrics[inp.id]?.clipping ? ' clipping' : ''}`}>
+                    Peak {Number.isFinite(meterMetrics[inp.id]?.peakDb) ? meterMetrics[inp.id].peakDb.toFixed(1) : '—'} dBFS
+                    {meterMetrics[inp.id]?.clipping && ' · CLIP'}
                   </div>
                   <input type="range" className="cam-slider" min={0} max={2} step={0.02} value={inp.gain}
-                    onChange={e => setAudioInputs(prev => prev.map(i => i.id === inp.id ? { ...i, gain: Number(e.target.value) } : i))} />
+                    onChange={e => updateAudioInput(inp.id, (input) => ({ ...input, gain: Number(e.target.value) }))} />
                   {inp.isCamera && audioDevices.length > 0 && (
                     <select className="ctrl-select ctrl-select-full" style={{ marginTop: '0.5rem' }} value={selAudioId}
                       onChange={e => {
                         const id = e.target.value;
                         setSelAudioId(id);
                         selAudioIdRef.current = id;
-                        restart();
+                        saveAudioPreferences(window.localStorage, { deviceId: id });
                       }}>
-                      <option value="">Default microphone</option>
+                      <option value="">Default primary microphone</option>
                       {audioDevices.map(d => (
                         <option key={d.deviceId} value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 8)}`}</option>
                       ))}
                     </select>
                   )}
+                  <div className="mixer-strip-grid">
+                    <label className="mixer-strip-field">
+                      <span>Preset</span>
+                      <select className="ctrl-select ctrl-select-full" value={inp.settings?.preset || 'flat'}
+                        onChange={e => applyAudioInputPreset(inp.id, e.target.value)}>
+                        {CHANNEL_STRIP_PRESET_OPTIONS.map(option => (
+                          <option key={option.id} value={option.id}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="mixer-strip-toggle">
+                      <input type="checkbox" checked={Boolean(inp.settings?.highPassEnabled)}
+                        onChange={e => updateAudioInputSetting(inp.id, 'highPassEnabled', e.target.checked)} />
+                      <span>High-pass</span>
+                    </label>
+                    <label className="mixer-strip-toggle">
+                      <input type="checkbox" checked={Boolean(inp.settings?.compressorEnabled)}
+                        onChange={e => updateAudioInputSetting(inp.id, 'compressorEnabled', e.target.checked)} />
+                      <span>Compressor</span>
+                    </label>
+                    <label className="mixer-strip-toggle">
+                      <input type="checkbox" checked={Boolean(inp.settings?.gateEnabled)}
+                        onChange={e => updateAudioInputSetting(inp.id, 'gateEnabled', e.target.checked)} />
+                      <span>Gate</span>
+                    </label>
+                  </div>
+                  <details className="custom-details mixer-fx-details">
+                    <summary>Effects and EQ</summary>
+                    <div className="custom-details-body">
+                      <div className="mixer-mini-grid">
+                        {[
+                          ['bass', 'Bass', -12, 12, 0.5],
+                          ['mid', 'Mid', -12, 12, 0.5],
+                          ['treble', 'Treble', -12, 12, 0.5],
+                          ['presence', 'Presence', -12, 12, 0.5],
+                          ['highPassHz', 'High-pass Hz', 20, 220, 5],
+                          ['pan', 'Pan', -1, 1, 0.05],
+                          ['alignmentMs', 'Sync delay', 0, 500, 1],
+                          ['reverbMix', 'Reverb', 0, 1, 0.02],
+                          ['delayMix', 'Delay', 0, 1, 0.02],
+                        ].map(([key, label, min, max, step]) => (
+                          <div key={key} className="cam-block mixer-mini-block">
+                            <div className="cam-block-header">
+                              <span className="cam-label">{label}</span>
+                              <span className="cam-value">
+                                {key === 'alignmentMs'
+                                  ? `${Math.round(inp.settings?.[key] || 0)} ms`
+                                  : key === 'pan'
+                                  ? Number(inp.settings?.[key] || 0).toFixed(2)
+                                  : key.endsWith('Mix')
+                                    ? `${Math.round((inp.settings?.[key] || 0) * 100)}%`
+                                    : Math.round(inp.settings?.[key] || 0)}
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              className="cam-slider"
+                              min={min}
+                              max={max}
+                              step={step}
+                              value={inp.settings?.[key] ?? 0}
+                              onChange={e => updateAudioInputSetting(inp.id, key, Number(e.target.value))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mixer-strip-grid">
+                        <label className="mixer-strip-toggle">
+                          <input type="checkbox" checked={Boolean(inp.settings?.reverbEnabled)}
+                            onChange={e => updateAudioInputSetting(inp.id, 'reverbEnabled', e.target.checked)} />
+                          <span>Reverb on</span>
+                        </label>
+                        <label className="mixer-strip-toggle">
+                          <input type="checkbox" checked={Boolean(inp.settings?.delayEnabled)}
+                            onChange={e => updateAudioInputSetting(inp.id, 'delayEnabled', e.target.checked)} />
+                          <span>Delay on</span>
+                        </label>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               );
             })}
 
-            {audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId)).length > 0 && (
-              <details className="custom-details">
-                <summary>+ Add audio input</summary>
-                <div className="custom-details-body">
-                  {audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId)).map(d => (
-                    <button key={d.deviceId} className="btn-full" style={{ marginBottom: '0.4rem' }}
-                      onClick={() => addExtraAudioInput(d.deviceId, d.label || `Mic ${d.deviceId.slice(0, 8)}`)}>
-                      + {d.label || `Microphone ${d.deviceId.slice(0, 8)}`}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            )}
             {audioInputError && <p className="lut-error">{audioInputError}</p>}
 
             <div className="cam-block" style={{ marginTop: '0.7rem' }}>
@@ -1440,10 +1839,41 @@ export default function Sender() {
                 onChange={e => setMasterGain(Number(e.target.value))} />
             </div>
 
+            <div className={`stream-health-card ${streamHealth.grade}`}>
+              <div className="stream-health-head">
+                <span>Production health</span>
+                <strong>{streamHealth.grade.toUpperCase()}</strong>
+              </div>
+              <div className="stream-health-grid">
+                <span>Peak <b>{Number.isFinite(masterMeter.peakDb) ? masterMeter.peakDb.toFixed(1) : '—'} dBFS</b></span>
+                <span>Loudness <b>{Number.isFinite(masterMeter.rmsDb) ? (masterMeter.rmsDb - .7).toFixed(1) : '—'} LUFS est.</b></span>
+                <span>Audio latency <b>{audioLatencyMs || '—'} ms</b></span>
+                <span>Upload <b>{connQuality?.bitrate ? `${connQuality.bitrate.toFixed(1)} Mbps` : 'Waiting'}</b></span>
+              </div>
+              {streamHealth.issues.length > 0 && <div className="stream-health-issues">{streamHealth.issues.join(' · ')}</div>}
+            </div>
+
+            <details className="custom-details mixer-fx-details">
+              <summary>Calibration and church presets</summary>
+              <div className="custom-details-body">
+                <p className="mixer-pair-note">Use the -20 dBFS 1 kHz tone to set the downstream mixer or recorder. Keep headphones on and speakers muted.</p>
+                <button className={`btn-full${calibrationOn ? ' muted' : ''}`} onClick={toggleCalibrationTone}>
+                  {calibrationOn ? 'Stop calibration tone' : 'Play -20 dBFS calibration tone'}
+                </button>
+                <button className="btn-full" style={{ marginTop: '.45rem' }} onClick={saveCurrentChurchPreset}>Save current church preset</button>
+                {churchPresets.map(saved => (
+                  <div className="church-preset-row" key={saved.name}>
+                    <button onClick={() => applyChurchPreset(saved)}>{saved.name}</button>
+                    <button aria-label={`Delete ${saved.name}`} onClick={() => setChurchPresets(deleteChurchPreset(window.localStorage, saved.name))}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </details>
+
             {/* ── MONITORING — listen to your own mix on headphones, independent of what viewers receive ── */}
             <div className="section-label" style={{ marginTop: '1rem', marginBottom: '0.4rem' }}>Monitor (Headphones)</div>
             <button className={`btn-full${monitorEnabled ? ' muted' : ''}`} onClick={() => setMonitorEnabled(m => !m)}>
-              {monitorEnabled ? '🎧  Monitoring on — tap to stop' : '🎧  Tap to monitor mix'}
+              {monitorEnabled ? `🎧  Monitoring ${pflInputId ? 'selected PFL input' : 'full mix'} — tap to stop` : '🎧  Tap to monitor mix'}
             </button>
             {audioOutputDevices.length > 0 && (
               <select className="ctrl-select ctrl-select-full" style={{ marginTop: '0.5rem' }}

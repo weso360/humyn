@@ -948,7 +948,7 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.mixer-mute-btn, .mixer-remove-btn {
+.mixer-mute-btn, .mixer-remove-btn, .mixer-solo-btn {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
@@ -962,6 +962,9 @@ html, body, #root {
 }
 
 .mixer-mute-btn.on { border-color: rgba(255,59,59,0.5); background: rgba(255,59,59,0.1); }
+.mixer-solo-btn { color: var(--text-3); font-size: 0.68rem; font-weight: 800; }
+.mixer-solo-btn { width: auto; min-width: 34px; padding: 0 5px; }
+.mixer-solo-btn.on { color: #111; border-color: var(--amber); background: var(--amber); }
 .mixer-remove-btn { color: var(--text-3); font-size: 0.7rem; }
 .mixer-remove-btn:hover { color: var(--red); border-color: rgba(255,59,59,0.4); }
 
@@ -978,6 +981,264 @@ html, body, #root {
   background: linear-gradient(90deg, var(--green), var(--amber));
   border-radius: var(--radius-pill);
   transition: width 0.1s linear;
+}
+.mixer-meter-fill.clipping { background: var(--red); }
+.mixer-meter-readout { margin: -0.22rem 0 0.35rem; color: var(--text-3); font-size: 0.58rem; text-align: right; }
+.mixer-meter-readout.clipping { color: var(--red); font-weight: 800; }
+
+.stream-health-card { margin-top: .7rem; padding: .7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); }
+.stream-health-card.good { border-color: rgba(0,230,118,.3); }
+.stream-health-card.ok { border-color: rgba(255,183,77,.4); }
+.stream-health-card.poor { border-color: rgba(255,59,59,.45); }
+.stream-health-head { display: flex; justify-content: space-between; font-size: .72rem; color: var(--text); }
+.stream-health-card.good .stream-health-head strong { color: var(--green); }
+.stream-health-card.ok .stream-health-head strong { color: var(--amber); }
+.stream-health-card.poor .stream-health-head strong { color: var(--red); }
+.stream-health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .7rem; margin-top: .6rem; font-size: .62rem; color: var(--text-3); }
+.stream-health-grid b { display: block; margin-top: .1rem; color: var(--text); font-size: .68rem; }
+.stream-health-issues { margin-top: .55rem; color: var(--amber); font-size: .61rem; line-height: 1.4; }
+.church-preset-row { display: grid; grid-template-columns: 1fr auto; gap: .35rem; margin-top: .4rem; }
+.church-preset-row button { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); padding: .5rem .6rem; text-align: left; cursor: pointer; }
+.church-preset-row button:last-child { color: var(--text-3); text-align: center; }
+
+.mixer-pair-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem;
+  margin-bottom: 0.65rem;
+}
+
+.mixer-pair-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mixer-pair-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mixer-pair-note {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.local-input-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.local-input-primary {
+  border-color: rgba(0,212,255,0.45);
+  background: rgba(0,212,255,0.1);
+  color: var(--accent2);
+}
+
+.local-input-empty {
+  margin-top: 0.65rem;
+  padding: 0.65rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mixer-phone-fallback {
+  margin-bottom: 0.65rem;
+}
+
+.mixer-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.mixer-strip-field span,
+.mixer-strip-toggle span {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 0.28rem;
+}
+
+.mixer-strip-toggle {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.65rem;
+}
+
+.mixer-strip-toggle input {
+  margin-right: 0.45rem;
+}
+
+.mixer-fx-details {
+  margin-top: 0.55rem;
+}
+
+.mixer-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.mixer-mini-block {
+  padding: 0.55rem 0.6rem;
+}
+
+/* ─── PHONE MIC PAGE ───────────────────────────────────────────────────────── */
+.phone-mic-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at top, rgba(0, 212, 255, 0.18), transparent 45%),
+    radial-gradient(circle at bottom, rgba(108, 99, 255, 0.16), transparent 40%),
+    #050508;
+}
+
+.phone-mic-card {
+  width: min(100%, 420px);
+  background: rgba(8, 8, 14, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 1.35rem;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.45);
+}
+
+.phone-mic-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent2);
+}
+
+.phone-mic-card h1 {
+  margin-top: 0.4rem;
+  font-size: clamp(2rem, 12vw, 3rem);
+  letter-spacing: 0.08em;
+}
+
+.phone-mic-copy {
+  margin-top: 0.55rem;
+  font-size: 0.92rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.phone-mic-field {
+  display: block;
+  margin-top: 1rem;
+}
+
+.phone-mic-field span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+.phone-mic-field input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+  color: var(--text);
+  font: inherit;
+}
+
+.phone-mic-start,
+.phone-mic-toggle {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.95rem 1rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.phone-mic-start {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+}
+
+.phone-mic-start:disabled,
+.phone-mic-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.phone-mic-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.95rem;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.phone-mic-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.phone-mic-dot.state-live { background: var(--green); box-shadow: 0 0 10px rgba(0, 230, 118, 0.45); }
+.phone-mic-dot.state-connecting,
+.phone-mic-dot.state-requesting,
+.phone-mic-dot.state-waiting,
+.phone-mic-dot.state-waiting-host { background: var(--amber); }
+.phone-mic-dot.state-error { background: var(--red); }
+
+.phone-mic-meter {
+  height: 10px;
+  margin-top: 0.95rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.phone-mic-meter-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--green), var(--amber), var(--red));
+  transition: width 0.12s linear;
+}
+
+.phone-mic-toggle {
+  margin-top: 0.95rem;
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.phone-mic-toggle.is-muted {
+  color: var(--red);
+  border-color: rgba(255,59,59,0.45);
+  background: rgba(255,59,59,0.08);
+}
+
+.phone-mic-error {
+  margin-top: 0.85rem;
+  color: var(--red);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 /* ─── VIEWER PAGE ────────────────────────────────────────────────────────────── */
