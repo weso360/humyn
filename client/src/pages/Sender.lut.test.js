@@ -1,4 +1,4 @@
-import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, getVideoEncodingProfile, nextVideoBitrateCap, scheduleVideoRender, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
@@ -40,6 +40,15 @@ test('Broadcast Master locks 1080p30 to the maximum detail profile', () => {
     degradationPreference: 'maintain-resolution',
     contentHint: 'detail',
   });
+});
+
+test('clocks processing from camera frames instead of page animation frames', () => {
+  const callback = jest.fn();
+  const video = { requestVideoFrameCallback: jest.fn(() => 42) };
+  const raf = jest.fn(() => 7);
+  expect(scheduleVideoRender(video, callback, raf)).toEqual({ type: 'video', id: 42 });
+  expect(video.requestVideoFrameCallback).toHaveBeenCalledWith(callback);
+  expect(raf).not.toHaveBeenCalled();
 });
 
 const SIMPLE_2X2X2_CUBE = `

@@ -187,6 +187,22 @@ export const getVideoEncodingProfile = ({ id, width, height, fps }) => ({
   contentHint: 'detail',
 });
 
+export function scheduleVideoRender(video, callback, requestFrame = requestAnimationFrame) {
+  if (typeof video?.requestVideoFrameCallback === 'function') {
+    return { type: 'video', id: video.requestVideoFrameCallback(callback) };
+  }
+  return { type: 'raf', id: requestFrame(callback) };
+}
+
+function cancelVideoRender(video, handle) {
+  if (!handle) return;
+  if (handle.type === 'video' && typeof video?.cancelVideoFrameCallback === 'function') {
+    video.cancelVideoFrameCallback(handle.id);
+  } else {
+    cancelAnimationFrame(handle.id);
+  }
+}
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -675,7 +691,7 @@ export default function Sender() {
       }
     }
     renderGL();
-    rafRef.current = requestAnimationFrame(drawFrame);
+    rafRef.current = scheduleVideoRender(video, drawFrame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -784,8 +800,9 @@ export default function Sender() {
 
   useEffect(() => {
     initGL();
-    rafRef.current = requestAnimationFrame(drawFrame);
-    return () => cancelAnimationFrame(rafRef.current);
+    const video = videoRef.current;
+    rafRef.current = scheduleVideoRender(video, drawFrame);
+    return () => cancelVideoRender(video, rafRef.current);
   }, [drawFrame, initGL]);
 
   const getProcessedVideoTrack = useCallback(() => processedStreamRef.current?.getVideoTracks()[0] || null, []);
