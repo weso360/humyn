@@ -170,6 +170,10 @@ export const WEBGL_CAPTURE_OPTIONS = Object.freeze({
 export const ensureTrackStream = (track, stream, MediaStreamCtor = MediaStream) =>
   stream instanceof MediaStreamCtor || stream?.getTracks ? stream : new MediaStreamCtor([track]);
 
+// Use the 2D processing canvas for transport. Captured WebGL surfaces can produce black frames
+// in Chrome/OBS on macOS even while their local preview renders correctly.
+export const selectCaptureCanvas = (baseCanvas) => baseCanvas;
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -723,7 +727,7 @@ export default function Sender() {
     // still at the default placeholder size and resizing moments later is a known Chrome bug that
     // leaves the captured track permanently black even though the canvas itself paints fine on-screen.
     if (!processedStreamRef.current) {
-      processedStreamRef.current = glCanvas.captureStream(30);
+      processedStreamRef.current = selectCaptureCanvas(base, glCanvas).captureStream(30);
     }
     const { gl, program, sourceTex, lutTex, uSource, uLut, uLutSize, uUseLut, uLutStrength } = g;
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
