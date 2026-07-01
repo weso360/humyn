@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
 import { createChannelStrip, CHANNEL_PRESETS, DEFAULT_CHANNEL_SETTINGS } from '../audio/channelStrip';
 import { choosePreferredInput, loadAudioPreferences, saveAudioPreferences } from '../audio/devicePreferences';
+import { getSignalUrl } from '../signalUrl';
 
 const PRESETS = [
   { id: 'ultra',  label: '🔥 Ultra',     desc: '4K · 60fps',    width: 3840, height: 2160, fps: 60  },
@@ -1002,9 +1003,7 @@ export default function Sender() {
   }, [addAudioInputNode, removePhoneContributor]);
 
   useEffect(() => {
-    const SIGNAL_URL = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : `${window.location.protocol}//${window.location.hostname}:3001`;
+    const SIGNAL_URL = getSignalUrl();
     const socket = io(SIGNAL_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
