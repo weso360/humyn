@@ -27,6 +27,8 @@ export function resolveRemoteStream(event, currentStream, MediaStreamCtor = Medi
   return stream;
 }
 
+export const viewerShouldStartMuted = search => new URLSearchParams(search).get('muted') === '1';
+
 export default function Viewer() {
   const { roomId } = useParams();
   const socketRef  = useRef(null);
@@ -36,6 +38,18 @@ export default function Viewer() {
 
   const [status, setStatus]   = useState('waiting'); // waiting | connecting | live | offline
   const [streamInfo, setStreamInfo] = useState(null);
+  const [muted, setMuted] = useState(() => viewerShouldStartMuted(window.location.search));
+  const mutedRef = useRef(muted);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+
+  const enableAudio = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = false;
+    mutedRef.current = false;
+    setMuted(false);
+    video.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
+  };
 
   const togglePiP = () => {
     if (document.pictureInPictureElement) {
@@ -64,7 +78,16 @@ export default function Viewer() {
         remoteStreamRef.current = remoteStream;
         if (videoRef.current) {
           videoRef.current.srcObject = remoteStream;
-          videoRef.current.play().catch(() => {});
+          videoRef.current.muted = mutedRef.current;
+          videoRef.current.play().then(() => setAudioBlocked(false)).catch(() => {
+            // Normal browsers may block audible autoplay. Keep video live and expose a user-gesture
+            // control; OBS Browser Source allows autoplay and therefore retains the mixed audio.
+            videoRef.current.muted = true;
+            mutedRef.current = true;
+            setMuted(true);
+            setAudioBlocked(true);
+            videoRef.current.play().catch(() => {});
+          });
           setStatus('live');
         }
       };
@@ -146,9 +169,13 @@ export default function Viewer() {
         ref={videoRef}
         autoPlay
         playsInline
-        muted
+        muted={muted}
         style={{ display: status === 'live' ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'contain' }}
       />
+
+      {status === 'live' && (audioBlocked || muted) && (
+        <button className="viewer-audio-btn" onClick={enableAudio}>🔊 Enable stream audio</button>
+      )}
 
       {status !== 'live' && (
         <div className={`viewer-waiting state-${status}`}>

@@ -1761,6 +1761,21 @@ html, body, #root {
 }
 .viewer-pip-btn:hover { background: rgba(255,255,255,0.12); }
 
+.viewer-audio-btn {
+  position: fixed;
+  left: 50%;
+  bottom: 4rem;
+  transform: translateX(-50%);
+  z-index: 20;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  background: rgba(10,10,16,.86);
+  color: #fff;
+  padding: .7rem 1rem;
+  font: 600 .78rem/1 inherit;
+  cursor: pointer;
+}
+
 /* Keep old .spinner CSS reachable in case anything still uses it (no JSX refs left) */
 
 /* ─── CAMERA: NOT SUPPORTED HINT ──────────────────────────────────────────── */

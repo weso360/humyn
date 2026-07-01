@@ -1,4 +1,4 @@
-import { resolveRemoteStream } from './Viewer';
+import { resolveRemoteStream, viewerShouldStartMuted } from './Viewer';
 
 class FakeMediaStream {
   constructor(tracks = []) { this.tracks = [...tracks]; }
@@ -17,4 +17,9 @@ test('assembles streamless transceiver tracks into a persistent media stream', (
   expect(stream.getTracks()).toEqual([video]);
   expect(resolveRemoteStream({ streams: [], track: audio }, stream, FakeMediaStream)).toBe(stream);
   expect(stream.getTracks()).toEqual([video, audio]);
+});
+
+test('viewer audio is enabled by default and can be explicitly muted', () => {
+  expect(viewerShouldStartMuted('')).toBe(false);
+  expect(viewerShouldStartMuted('?muted=1')).toBe(true);
 });
