@@ -2,10 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
+// See matching comment in Sender.js — TURN fallback for networks where a direct P2P path fails.
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    {
+      urls: process.env.REACT_APP_TURN_URLS?.split(',') || [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: process.env.REACT_APP_TURN_USERNAME || 'openrelayproject',
+      credential: process.env.REACT_APP_TURN_CREDENTIAL || 'openrelayproject',
+    },
   ]
 };
 
@@ -18,10 +28,18 @@ export default function Viewer() {
   const [status, setStatus]   = useState('waiting'); // waiting | connecting | live | offline
   const [streamInfo, setStreamInfo] = useState(null);
 
+  const togglePiP = () => {
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    } else if (videoRef.current?.requestPictureInPicture) {
+      videoRef.current.requestPictureInPicture().catch(() => {});
+    }
+  };
+
   useEffect(() => {
     const SIGNAL_URL = process.env.NODE_ENV === 'production'
       ? window.location.origin
-      : `http://192.168.0.12:3001`;
+      : `${window.location.protocol}//${window.location.hostname}:3001`;
     const socket = io(SIGNAL_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
@@ -122,23 +140,40 @@ export default function Viewer() {
       />
 
       {status !== 'live' && (
-        <div className="viewer-waiting">
-          <div className="spinner" />
-          <p>
-            {status === 'waiting'    && `Waiting for sender in room ${roomId}…`}
-            {status === 'connecting' && 'Connecting…'}
-            {status === 'offline'    && 'Sender disconnected. Waiting…'}
+        <div className={`viewer-waiting state-${status}`}>
+          <div className="viewer-halo" aria-hidden="true" />
+          <div className="viewer-badge">
+            <span className={`viewer-badge-dot status-${status}`} />
+            {status === 'waiting'    && 'Waiting for sender'}
+            {status === 'connecting' && 'Connecting'}
+            {status === 'offline'    && 'Sender offline'}
+          </div>
+          <div className="viewer-room">{roomId}</div>
+          <p className="viewer-sub">
+            {status === 'waiting'    && 'Open StreamLink on your phone and use this room code to go live.'}
+            {status === 'connecting' && 'Negotiating peer connection…'}
+            {status === 'offline'    && 'Stream ended. Auto-reconnecting when sender returns.'}
           </p>
-          <p style={{ fontSize: '0.75rem', color: '#444' }}>
-            Room: {roomId}
-          </p>
+          <div className="viewer-retry" aria-hidden="true">
+            <span /><span /><span />
+          </div>
         </div>
       )}
 
       {status === 'live' && streamInfo && (
         <div className="viewer-status">
-          {streamInfo.width}×{streamInfo.height} · {streamInfo.fps}fps · {streamInfo.label}
+          <span className="viewer-status-dot" />
+          {streamInfo.width}×{streamInfo.height} · {streamInfo.fps}fps{streamInfo.label ? ` · ${streamInfo.label}` : ''}
         </div>
+      )}
+
+      {status === 'live' && document.pictureInPictureEnabled && (
+        <button className="viewer-pip-btn" onClick={togglePiP} aria-label="Picture in picture">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" />
+          </svg>
+        </button>
       )}
     </div>
   );

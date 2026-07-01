@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -30,19 +31,32 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', rooms: rooms.size });
 });
 
-// Track rooms: roomId -> { sender: socketId | null, viewers: Set<socketId> }
+// Track rooms: roomId -> { sender: socketId | null, senderToken: string | null, viewers: Set<socketId> }
 const rooms = new Map();
 
 io.on('connection', (socket) => {
   console.log(`[+] Connected: ${socket.id}`);
 
   // --- SENDER joins a room ---
-  socket.on('sender-join', ({ roomId }) => {
+  // Anyone who knows a room's viewer link also knows its roomId, so without this check a second
+  // person could open /send/<same-id> and silently hijack an active stream. The first sender to
+  // claim a room gets a token back; only that token (or an empty/dead room) can claim it after.
+  socket.on('sender-join', ({ roomId, token }, ack) => {
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, { sender: null, viewers: new Set() });
+      rooms.set(roomId, { sender: null, senderToken: null, viewers: new Set() });
     }
     const room = rooms.get(roomId);
+
+    const isHijack = room.sender && room.sender !== socket.id && token !== room.senderToken;
+    if (isHijack) {
+      console.log(`[SENDER] ${socket.id} rejected — room ${roomId} already has an active sender`);
+      if (typeof ack === 'function') ack({ ok: false, reason: 'taken' });
+      return;
+    }
+
+    const senderToken = room.senderToken || crypto.randomBytes(12).toString('hex');
     room.sender = socket.id;
+    room.senderToken = senderToken;
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.role = 'sender';
@@ -51,6 +65,7 @@ io.on('connection', (socket) => {
 
     // Notify any existing viewers that a sender is available
     socket.to(roomId).emit('sender-available');
+    if (typeof ack === 'function') ack({ ok: true, token: senderToken });
   });
 
   // --- VIEWER joins a room ---
@@ -132,6 +147,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-server.listen(PORT, () => {
-  console.log(`🎥 StreamLink signaling server running on port ${PORT}`);
-});
+// Only auto-listen when run directly (`node server.js` / `npm start`) — tests require() this
+// module and control their own port/lifecycle instead.
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`🎥 StreamLink signaling server running on port ${PORT}`);
+  });
+}
+
+module.exports = { server, io };

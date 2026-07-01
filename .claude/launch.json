@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "client",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-l", "-c", "cd $HOME && cd \"/Users/bentlybeso/Desktop/example qho/humyn/client\" && BROWSER=none npm start"],
+      "port": 3000
+    },
+    {
+      "name": "preview-build",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-l", "-c", "cd $HOME && npx --yes serve -s \"/Users/bentlybeso/Desktop/example qho/humyn/client/build\" -l 4173"],
+      "port": 4173
+    },
+    {
+      "name": "signal",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "cd $HOME && cd \"/Users/bentlybeso/Desktop/example qho/humyn\" && node server.js"],
+      "port": 3001
+    }
+  ]
+}
