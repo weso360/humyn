@@ -5,7 +5,7 @@ export const DEFAULT_CHANNEL_SETTINGS = Object.freeze({
   gateEnabled: false, gateThreshold: -52,
   reverbEnabled: false, reverbRoom: .35, reverbMix: 0,
   delayEnabled: false, delayTime: .18, delayFeedback: .2, delayMix: 0,
-  pan: 0,
+  pan: 0, alignmentMs: 0,
 });
 
 export const CHANNEL_PRESETS = Object.freeze({
@@ -18,7 +18,7 @@ export const CHANNEL_PRESETS = Object.freeze({
 
 const LIMITS = {
   bass: [-12, 12], mid: [-12, 12], treble: [-12, 12], presence: [-12, 12],
-  highPassHz: [20, 400], pan: [-1, 1], compressorAmount: [0, 1],
+  highPassHz: [20, 400], pan: [-1, 1], alignmentMs: [0, 500], compressorAmount: [0, 1],
   reverbRoom: [0, 1], reverbMix: [0, 1], delayTime: [0, 1],
   delayFeedback: [0, .85], delayMix: [0, 1], compressorThreshold: [-60, 0],
   gateThreshold: [-80, 0],
@@ -36,14 +36,16 @@ export function createChannelStrip(context, stream, { id, kind, stopTracks = tru
   const presence = context.createBiquadFilter(); presence.type = 'peaking'; presence.frequency.value = 3500; presence.Q.value = .7;
   const compressor = context.createDynamicsCompressor();
   const gate = context.createGain();
+  const alignmentDelay = context.createDelay(.5);
   const panner = context.createStereoPanner ? context.createStereoPanner() : null;
   const dry = context.createGain(), delaySend = context.createGain(), delay = context.createDelay(1), delayFeedback = context.createGain(), delayWet = context.createGain();
   const reverbSend = context.createGain(), convolver = context.createConvolver(), reverbWet = context.createGain();
   const recombine = context.createGain(), fader = context.createGain(), analyser = context.createAnalyser(), output = context.createGain();
-  const nodes = { source, trim, highpass, bass, mid, treble, presence, compressor, gate, panner, dry, delaySend, delay, delayFeedback, delayWet, reverbSend, convolver, reverbWet, recombine, fader, analyser, output };
+  const nodes = { source, trim, highpass, bass, mid, treble, presence, compressor, gate, alignmentDelay, panner, dry, delaySend, delay, delayFeedback, delayWet, reverbSend, convolver, reverbWet, recombine, fader, analyser, output };
   const connect = (a, b) => a.connect(b);
   connect(source, trim); connect(trim, highpass); connect(highpass, bass); connect(bass, mid); connect(mid, treble); connect(treble, presence); connect(presence, compressor); connect(compressor, gate);
-  const post = panner || gate; if (panner) connect(gate, panner);
+  connect(gate, alignmentDelay);
+  const post = panner || alignmentDelay; if (panner) connect(alignmentDelay, panner);
   connect(post, dry); connect(dry, recombine);
   connect(post, delaySend); connect(delaySend, delay); connect(delay, delayWet); connect(delayWet, recombine); connect(delay, delayFeedback); connect(delayFeedback, delay);
   connect(post, reverbSend); connect(reverbSend, convolver); connect(convolver, reverbWet); connect(reverbWet, recombine);
@@ -63,6 +65,7 @@ export function createChannelStrip(context, stream, { id, kind, stopTracks = tru
     target(bass.gain, settings.bass); target(mid.gain, settings.mid); target(treble.gain, settings.treble); target(presence.gain, settings.presence);
     target(compressor.threshold, settings.compressorEnabled ? settings.compressorThreshold : 0);
     target(compressor.ratio, settings.compressorEnabled ? 1 + settings.compressorAmount * 11 : 1);
+    target(alignmentDelay.delayTime, settings.alignmentMs / 1000);
     if (panner) target(panner.pan, settings.pan);
     target(delay.delayTime, settings.delayTime); target(delayFeedback.gain, settings.delayEnabled ? settings.delayFeedback : 0); target(delayWet.gain, settings.delayEnabled ? settings.delayMix : 0); target(delaySend.gain, 1);
     target(reverbWet.gain, settings.reverbEnabled ? settings.reverbMix : 0); target(reverbSend.gain, 1); convolver.buffer = impulse(settings.reverbRoom);

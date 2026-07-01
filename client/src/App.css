@@ -948,7 +948,7 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.mixer-mute-btn, .mixer-remove-btn {
+.mixer-mute-btn, .mixer-remove-btn, .mixer-solo-btn {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
@@ -962,6 +962,9 @@ html, body, #root {
 }
 
 .mixer-mute-btn.on { border-color: rgba(255,59,59,0.5); background: rgba(255,59,59,0.1); }
+.mixer-solo-btn { color: var(--text-3); font-size: 0.68rem; font-weight: 800; }
+.mixer-solo-btn { width: auto; min-width: 34px; padding: 0 5px; }
+.mixer-solo-btn.on { color: #111; border-color: var(--amber); background: var(--amber); }
 .mixer-remove-btn { color: var(--text-3); font-size: 0.7rem; }
 .mixer-remove-btn:hover { color: var(--red); border-color: rgba(255,59,59,0.4); }
 
@@ -979,6 +982,24 @@ html, body, #root {
   border-radius: var(--radius-pill);
   transition: width 0.1s linear;
 }
+.mixer-meter-fill.clipping { background: var(--red); }
+.mixer-meter-readout { margin: -0.22rem 0 0.35rem; color: var(--text-3); font-size: 0.58rem; text-align: right; }
+.mixer-meter-readout.clipping { color: var(--red); font-weight: 800; }
+
+.stream-health-card { margin-top: .7rem; padding: .7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); }
+.stream-health-card.good { border-color: rgba(0,230,118,.3); }
+.stream-health-card.ok { border-color: rgba(255,183,77,.4); }
+.stream-health-card.poor { border-color: rgba(255,59,59,.45); }
+.stream-health-head { display: flex; justify-content: space-between; font-size: .72rem; color: var(--text); }
+.stream-health-card.good .stream-health-head strong { color: var(--green); }
+.stream-health-card.ok .stream-health-head strong { color: var(--amber); }
+.stream-health-card.poor .stream-health-head strong { color: var(--red); }
+.stream-health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .7rem; margin-top: .6rem; font-size: .62rem; color: var(--text-3); }
+.stream-health-grid b { display: block; margin-top: .1rem; color: var(--text); font-size: .68rem; }
+.stream-health-issues { margin-top: .55rem; color: var(--amber); font-size: .61rem; line-height: 1.4; }
+.church-preset-row { display: grid; grid-template-columns: 1fr auto; gap: .35rem; margin-top: .4rem; }
+.church-preset-row button { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); padding: .5rem .6rem; text-align: left; cursor: pointer; }
+.church-preset-row button:last-child { color: var(--text-3); text-align: center; }
 
 .mixer-pair-card {
   background: var(--surface2);

@@ -58,9 +58,16 @@ test('creates the complete graph without connecting the master destination', () 
 
 test('clamps every bounded setting', () => {
   const s = createChannelStrip(makeContext(), stream(), { id: 'x', kind: 'mic' });
-  const values = { bass: 99, mid: -99, treble: 99, presence: -99, highPassHz: 999, pan: -9, compressorAmount: 9, reverbRoom: -2, reverbMix: 9, delayTime: 9, delayFeedback: 9, delayMix: -2, compressorThreshold: -200, gateThreshold: 10 };
+  const values = { bass: 99, mid: -99, treble: 99, presence: -99, highPassHz: 999, pan: -9, alignmentMs: 9999, compressorAmount: 9, reverbRoom: -2, reverbMix: 9, delayTime: 9, delayFeedback: 9, delayMix: -2, compressorThreshold: -200, gateThreshold: 10 };
   Object.entries(values).forEach(([k, v]) => s.setSetting(k, v));
-  expect(s.getSettings()).toEqual(expect.objectContaining({ bass: 12, mid: -12, treble: 12, presence: -12, highPassHz: 400, pan: -1, compressorAmount: 1, reverbRoom: 0, reverbMix: 1, delayTime: 1, delayFeedback: .85, delayMix: 0, compressorThreshold: -60, gateThreshold: 0 }));
+  expect(s.getSettings()).toEqual(expect.objectContaining({ bass: 12, mid: -12, treble: 12, presence: -12, highPassHz: 400, pan: -1, alignmentMs: 500, compressorAmount: 1, reverbRoom: 0, reverbMix: 1, delayTime: 1, delayFeedback: .85, delayMix: 0, compressorThreshold: -60, gateThreshold: 0 }));
+});
+
+test('delays an input independently for microphone alignment', () => {
+  const s = createChannelStrip(makeContext(), stream(), { id: 'x', kind: 'mic' });
+  expect(s.nodes.gate.connections[0]).toBe(s.nodes.alignmentDelay);
+  s.setSetting('alignmentMs', 135);
+  expect(s.nodes.alignmentDelay.delayTime.value).toBeCloseTo(.135);
 });
 
 test('presets apply independently and reset restores defaults', () => {

@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
 import { createChannelStrip, CHANNEL_PRESETS, DEFAULT_CHANNEL_SETTINGS } from '../audio/channelStrip';
 import { choosePreferredInput, loadAudioPreferences, saveAudioPreferences } from '../audio/devicePreferences';
+import { analyseSamples, buildStreamHealth, deleteChurchPreset, loadChurchPresets, saveChurchPreset } from '../audio/productionAudio';
 import { getSignalUrl } from '../signalUrl';
 
 const PRESETS = [
@@ -246,15 +247,22 @@ export default function Sender() {
   // Audio mixer — multiple inputs (camera mic + any extras) mixed via Web Audio into one output track
   const audioCtxRef       = useRef(null);
   const mixDestRef        = useRef(null); // MediaStreamAudioDestinationNode — .stream's audio track is what's sent to viewers
+  const pflDestRef        = useRef(null); // isolated pre-fader listen bus; never sent to viewers
   const masterGainNodeRef = useRef(null);
   const masterLimiterNodeRef = useRef(null);
+  const masterAnalyserNodeRef = useRef(null);
   const audioNodesRef     = useRef({}); // id -> { strip, stream, type, phoneSocketId }
   const phonePeersRef     = useRef({}); // phoneSocketId -> RTCPeerConnection
   const monitorAudioElRef = useRef(null); // hidden <audio> for headphone monitoring (never sent to viewers)
   const [audioInputs, setAudioInputs]         = useState([]); // [{ id, label, gain, muted, settings, isCamera, type }]
   const audioInputsRef                        = useRef([]);
   const [levels, setLevels]                   = useState({}); // id -> 0..1 meter level
+  const [meterMetrics, setMeterMetrics]       = useState({});
   const [masterGain, setMasterGain]           = useState(1);
+  const [pflInputId, setPflInputId]           = useState(null);
+  const [churchPresets, setChurchPresets]     = useState(() => loadChurchPresets(window.localStorage));
+  const [calibrationOn, setCalibrationOn]     = useState(false);
+  const calibrationRef                        = useRef(null);
   const [monitorEnabled, setMonitorEnabled]   = useState(false);
   const [monitorDeviceId, setMonitorDeviceId] = useState('');
   const [audioOutputDevices, setAudioOutputDevices] = useState([]);
@@ -269,8 +277,11 @@ export default function Sender() {
     if (!Ctx) return null;
     const ctx = new Ctx();
     const dest = ctx.createMediaStreamDestination();
+    const pflDest = ctx.createMediaStreamDestination();
     const master = ctx.createGain();
     const limiter = ctx.createDynamicsCompressor();
+    const masterAnalyser = ctx.createAnalyser();
+    masterAnalyser.fftSize = 2048;
     master.gain.value = 1;
     limiter.threshold.value = -3;
     limiter.knee.value = 0;
@@ -278,11 +289,14 @@ export default function Sender() {
     limiter.attack.value = 0.003;
     limiter.release.value = 0.12;
     master.connect(limiter);
-    limiter.connect(dest);
+    limiter.connect(masterAnalyser);
+    masterAnalyser.connect(dest);
     audioCtxRef.current = ctx;
     mixDestRef.current = dest;
+    pflDestRef.current = pflDest;
     masterGainNodeRef.current = master;
     masterLimiterNodeRef.current = limiter;
+    masterAnalyserNodeRef.current = masterAnalyser;
     return ctx;
   }, []);
 
@@ -296,6 +310,7 @@ export default function Sender() {
       }
       delete audioNodesRef.current[id];
     }
+    setPflInputId(current => current === id ? null : current);
     setAudioInputs(prev => prev.filter(i => i.id !== id));
   }, []);
 
@@ -378,29 +393,85 @@ export default function Sender() {
   }, [audioInputs]);
 
   useEffect(() => {
+    Object.entries(audioNodesRef.current).forEach(([id, node]) => {
+      if (node.pflConnected) {
+        try { node.strip.nodes.recombine.disconnect(pflDestRef.current); } catch (_) {}
+        node.pflConnected = false;
+      }
+      if (id === pflInputId && pflDestRef.current) {
+        node.strip.nodes.recombine.connect(pflDestRef.current);
+        node.pflConnected = true;
+      }
+    });
+  }, [pflInputId, audioInputs.length]);
+
+  useEffect(() => {
     if (masterGainNodeRef.current) masterGainNodeRef.current.gain.value = masterGain;
   }, [masterGain]);
 
   // Poll analyser levels for the per-input meters (throttled — full 60fps isn't needed for a VU meter)
   useEffect(() => {
     const id = setInterval(() => {
-      const next = {};
+      const next = {}, metrics = {};
       Object.entries(audioNodesRef.current).forEach(([key, n]) => {
         const analyser = n.strip.analyser;
         const meterBuf = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(meterBuf);
         next[key] = meterBuf.reduce((a, b) => a + b, 0) / meterBuf.length / 255;
-        const timeBuf = new Uint8Array(analyser.fftSize);
-        analyser.getByteTimeDomainData(timeBuf);
-        const rms = Math.sqrt(timeBuf.reduce((sum, sample) => {
-          const centered = (sample - 128) / 128;
-          return sum + centered * centered;
-        }, 0) / timeBuf.length);
-        n.strip.tickGate(rms);
+        const timeBuf = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(timeBuf);
+        metrics[key] = analyseSamples(timeBuf);
+        n.strip.tickGate(metrics[key].rms);
       });
+      const masterAnalyser = masterAnalyserNodeRef.current;
+      if (masterAnalyser) {
+        const masterBuf = new Float32Array(masterAnalyser.fftSize);
+        masterAnalyser.getFloatTimeDomainData(masterBuf);
+        metrics.master = analyseSamples(masterBuf);
+      }
       setLevels(next);
+      setMeterMetrics(metrics);
     }, 120);
     return () => clearInterval(id);
+  }, []);
+
+  const toggleCalibrationTone = useCallback(() => {
+    const ctx = ensureAudioGraph();
+    if (!ctx) return;
+    if (calibrationRef.current) {
+      try { calibrationRef.current.osc.stop(); } catch (_) {}
+      calibrationRef.current = null;
+      setCalibrationOn(false);
+      return;
+    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 1000;
+    gain.gain.value = .1;
+    osc.connect(gain); gain.connect(masterGainNodeRef.current); osc.start();
+    calibrationRef.current = { osc, gain };
+    setCalibrationOn(true);
+  }, [ensureAudioGraph]);
+
+  useEffect(() => () => {
+    if (calibrationRef.current) {
+      try { calibrationRef.current.osc.stop(); } catch (_) {}
+      calibrationRef.current = null;
+    }
+  }, []);
+
+  const saveCurrentChurchPreset = useCallback(() => {
+    const name = window.prompt('Name this church audio preset', 'Sunday Service');
+    if (!name) return;
+    setChurchPresets(saveChurchPreset(window.localStorage, name, audioInputsRef.current, masterGain));
+  }, [masterGain]);
+
+  const applyChurchPreset = useCallback((preset) => {
+    setMasterGain(preset.masterGain ?? 1);
+    setAudioInputs(prev => prev.map(input => {
+      const saved = preset.inputs?.find(item => item.deviceId === input.deviceId || item.label === input.label);
+      return saved ? { ...input, gain: saved.gain, muted: saved.muted, settings: { ...DEFAULT_CHANNEL_SETTINGS, ...saved.settings } } : input;
+    }));
   }, []);
 
   // Headphone monitoring — plays the same mix sent to viewers, routed to a chosen output device,
@@ -417,10 +488,10 @@ export default function Sender() {
   useEffect(() => {
     const el = monitorAudioElRef.current;
     if (!el || !mixDestRef.current) return;
-    el.srcObject = mixDestRef.current.stream;
+    el.srcObject = pflInputId && pflDestRef.current ? pflDestRef.current.stream : mixDestRef.current.stream;
     el.muted = !monitorEnabled;
     if (monitorEnabled) el.play().catch(() => {});
-  }, [monitorEnabled, audioInputs.length]);
+  }, [monitorEnabled, audioInputs.length, pflInputId]);
 
   useEffect(() => {
     const el = monitorAudioElRef.current;
@@ -1142,6 +1213,14 @@ export default function Sender() {
 
   const dotClass = status === 'live' ? 'hud-dot live' : status === 'connecting' ? 'hud-dot connecting' : 'hud-dot';
   const statusText = status === 'live' ? `LIVE · ${viewerCount}` : status === 'connecting' ? 'WAITING' : 'READY';
+  const masterMeter = meterMetrics.master || { peakDb: -Infinity, rmsDb: -Infinity, clipping: false };
+  const streamHealth = buildStreamHealth({
+    status, viewerCount, bitrateMbps: connQuality?.bitrate || 0,
+    peakDb: masterMeter.peakDb, clipping: masterMeter.clipping, videoReady: Boolean(actualRes),
+  });
+  const audioLatencyMs = audioCtxRef.current
+    ? Math.round(((audioCtxRef.current.baseLatency || 0) + (audioCtxRef.current.outputLatency || 0)) * 1000)
+    : 0;
   const availableMixerAudioDevices = audioDevices.filter(d => !audioInputs.some(i => i.deviceId === d.deviceId));
   const likelyContinuityDevice = availableMixerAudioDevices.find(d => /(continuity|iphone|ipad|apple)/i.test(d.label || ''));
 
@@ -1622,7 +1701,12 @@ export default function Sender() {
                 <div key={inp.id} className="mixer-row">
                   <div className="mixer-row-top">
                     <span className="mixer-label">{inp.isCamera ? '📷 ' : '🎚 '}{inp.label}</span>
-                    <div className="mixer-row-actions">
+                  <div className="mixer-row-actions">
+                      <button className={`mixer-solo-btn${pflInputId === inp.id ? ' on' : ''}`}
+                        title="Pre-fader listen in headphones (does not change the broadcast)"
+                        onClick={() => setPflInputId(current => current === inp.id ? null : inp.id)}>
+                        PFL
+                      </button>
                       <button className={`mixer-mute-btn${inp.muted ? ' on' : ''}`}
                         onClick={() => updateAudioInput(inp.id, (input) => ({ ...input, muted: !input.muted }))}>
                         {inp.muted ? '🔇' : '🔊'}
@@ -1633,7 +1717,11 @@ export default function Sender() {
                     </div>
                   </div>
                   <div className="mixer-meter-track">
-                    <div className="mixer-meter-fill" style={{ width: `${Math.min(100, level * 130)}%` }} />
+                    <div className={`mixer-meter-fill${meterMetrics[inp.id]?.clipping ? ' clipping' : ''}`} style={{ width: `${Math.min(100, level * 130)}%` }} />
+                  </div>
+                  <div className={`mixer-meter-readout${meterMetrics[inp.id]?.clipping ? ' clipping' : ''}`}>
+                    Peak {Number.isFinite(meterMetrics[inp.id]?.peakDb) ? meterMetrics[inp.id].peakDb.toFixed(1) : '—'} dBFS
+                    {meterMetrics[inp.id]?.clipping && ' · CLIP'}
                   </div>
                   <input type="range" className="cam-slider" min={0} max={2} step={0.02} value={inp.gain}
                     onChange={e => updateAudioInput(inp.id, (input) => ({ ...input, gain: Number(e.target.value) }))} />
@@ -1688,6 +1776,7 @@ export default function Sender() {
                           ['presence', 'Presence', -12, 12, 0.5],
                           ['highPassHz', 'High-pass Hz', 20, 220, 5],
                           ['pan', 'Pan', -1, 1, 0.05],
+                          ['alignmentMs', 'Sync delay', 0, 500, 1],
                           ['reverbMix', 'Reverb', 0, 1, 0.02],
                           ['delayMix', 'Delay', 0, 1, 0.02],
                         ].map(([key, label, min, max, step]) => (
@@ -1695,7 +1784,9 @@ export default function Sender() {
                             <div className="cam-block-header">
                               <span className="cam-label">{label}</span>
                               <span className="cam-value">
-                                {key === 'pan'
+                                {key === 'alignmentMs'
+                                  ? `${Math.round(inp.settings?.[key] || 0)} ms`
+                                  : key === 'pan'
                                   ? Number(inp.settings?.[key] || 0).toFixed(2)
                                   : key.endsWith('Mix')
                                     ? `${Math.round((inp.settings?.[key] || 0) * 100)}%`
@@ -1743,10 +1834,41 @@ export default function Sender() {
                 onChange={e => setMasterGain(Number(e.target.value))} />
             </div>
 
+            <div className={`stream-health-card ${streamHealth.grade}`}>
+              <div className="stream-health-head">
+                <span>Production health</span>
+                <strong>{streamHealth.grade.toUpperCase()}</strong>
+              </div>
+              <div className="stream-health-grid">
+                <span>Peak <b>{Number.isFinite(masterMeter.peakDb) ? masterMeter.peakDb.toFixed(1) : '—'} dBFS</b></span>
+                <span>Loudness <b>{Number.isFinite(masterMeter.rmsDb) ? (masterMeter.rmsDb - .7).toFixed(1) : '—'} LUFS est.</b></span>
+                <span>Audio latency <b>{audioLatencyMs || '—'} ms</b></span>
+                <span>Upload <b>{connQuality?.bitrate ? `${connQuality.bitrate.toFixed(1)} Mbps` : 'Waiting'}</b></span>
+              </div>
+              {streamHealth.issues.length > 0 && <div className="stream-health-issues">{streamHealth.issues.join(' · ')}</div>}
+            </div>
+
+            <details className="custom-details mixer-fx-details">
+              <summary>Calibration and church presets</summary>
+              <div className="custom-details-body">
+                <p className="mixer-pair-note">Use the -20 dBFS 1 kHz tone to set the downstream mixer or recorder. Keep headphones on and speakers muted.</p>
+                <button className={`btn-full${calibrationOn ? ' muted' : ''}`} onClick={toggleCalibrationTone}>
+                  {calibrationOn ? 'Stop calibration tone' : 'Play -20 dBFS calibration tone'}
+                </button>
+                <button className="btn-full" style={{ marginTop: '.45rem' }} onClick={saveCurrentChurchPreset}>Save current church preset</button>
+                {churchPresets.map(saved => (
+                  <div className="church-preset-row" key={saved.name}>
+                    <button onClick={() => applyChurchPreset(saved)}>{saved.name}</button>
+                    <button aria-label={`Delete ${saved.name}`} onClick={() => setChurchPresets(deleteChurchPreset(window.localStorage, saved.name))}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </details>
+
             {/* ── MONITORING — listen to your own mix on headphones, independent of what viewers receive ── */}
             <div className="section-label" style={{ marginTop: '1rem', marginBottom: '0.4rem' }}>Monitor (Headphones)</div>
             <button className={`btn-full${monitorEnabled ? ' muted' : ''}`} onClick={() => setMonitorEnabled(m => !m)}>
-              {monitorEnabled ? '🎧  Monitoring on — tap to stop' : '🎧  Tap to monitor mix'}
+              {monitorEnabled ? `🎧  Monitoring ${pflInputId ? 'selected PFL input' : 'full mix'} — tap to stop` : '🎧  Tap to monitor mix'}
             </button>
             {audioOutputDevices.length > 0 && (
               <select className="ctrl-select ctrl-select-full" style={{ marginTop: '0.5rem' }}
