@@ -156,6 +156,9 @@ export const WEBGL_CAPTURE_OPTIONS = Object.freeze({
   alpha: false,
 });
 
+export const ensureTrackStream = (track, stream, MediaStreamCtor = MediaStream) =>
+  stream instanceof MediaStreamCtor || stream?.getTracks ? stream : new MediaStreamCtor([track]);
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -845,7 +848,7 @@ export default function Sender() {
     peersRef.current[viewerId] = pc;
     // Send the processed (canvas) video track — carries brightness/contrast/LUT/digital zoom to viewers.
     const processedTrack = getProcessedVideoTrack();
-    if (processedTrack) pc.addTrack(processedTrack, streamRef.current);
+    if (processedTrack) pc.addTrack(processedTrack, ensureTrackStream(processedTrack, streamRef.current));
     if (!processedTrack) streamRef.current?.getVideoTracks().forEach(t => pc.addTrack(t, streamRef.current));
     // Send the mixed audio track — combines every audio input (camera mic + any extras) with their gain/mute applied.
     const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];

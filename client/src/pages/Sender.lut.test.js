@@ -1,7 +1,15 @@
-import { parseCubeLut, buildLutAtlas, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
+});
+
+test('wraps a processed track when a viewer arrives before the camera stream', () => {
+  const track = { kind: 'video' };
+  class FakeMediaStream { constructor(tracks) { this.tracks = tracks; } }
+  expect(ensureTrackStream(track, null, FakeMediaStream).tracks).toEqual([track]);
+  const existing = { getTracks: () => [track] };
+  expect(ensureTrackStream(track, existing, FakeMediaStream)).toBe(existing);
 });
 
 const SIMPLE_2X2X2_CUBE = `
