@@ -10,3 +10,5 @@ yarn-error.log*
 audit.log
 client/build/
 client/node_modules/
+.worktrees/
+.superpowers/
