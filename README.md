@@ -30,8 +30,6 @@ Turn a phone (or any webcam/capture device) into a wireless camera feed for OBS 
 
 **Reliability**
 - STUN + TURN (fallback to a public relay, or bring your own via `REACT_APP_TURN_*` env vars) so connections survive symmetric NATs and restrictive networks
-- Room-hijack protection — a room's viewer link can't be used by someone else to take over as the sender
-- Auto-reconnect on refresh (same-tab sender reclaim via a stored token)
 
 **Viewer page**
 - Redesigned waiting/connecting/offline states with auto-reconnect
@@ -66,9 +64,6 @@ npm run dev
 ## Testing
 
 ```bash
-# Server-side: signaling / sender-hijack-protection tests
-npm test
-
 # Client-side: LUT parser / atlas builder tests
 cd client && npm test
 ```
@@ -101,7 +96,6 @@ Without `REACT_APP_TURN_*` set, the app falls back to the Open Relay Project's f
 ```
 streamlink/
 ├── server.js                    # Socket.IO signaling server (rooms, offer/answer/ICE relay)
-├── server.test.js               # Sender hijack-protection tests
 ├── package.json                 # Server dependencies
 ├── client/                      # React frontend
 │   ├── src/

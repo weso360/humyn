@@ -418,7 +418,6 @@ export default function Sender() {
   const [copied, setCopied]           = useState(false);
   const [showQr, setShowQr]           = useState(false);
   const [camError, setCamError]       = useState(null);
-  const [roomTaken, setRoomTaken]     = useState(false);
   const [panelOpen, setPanelOpen]     = useState(true);
   const qrCanvasRef                   = useRef(null);
 
@@ -537,6 +536,12 @@ export default function Sender() {
       glCanvas.width = base.width;
       glCanvas.height = base.height;
     }
+    // Create the captured stream only once the canvas has its real dimensions — creating it while
+    // still at the default placeholder size and resizing moments later is a known Chrome bug that
+    // leaves the captured track permanently black even though the canvas itself paints fine on-screen.
+    if (!processedStreamRef.current) {
+      processedStreamRef.current = glCanvas.captureStream(30);
+    }
     const { gl, program, sourceTex, lutTex, uSource, uLut, uLutSize, uUseLut, uLutStrength } = g;
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.useProgram(program);
@@ -572,9 +577,6 @@ export default function Sender() {
 
   useEffect(() => {
     initGL();
-    if (glCanvasRef.current && !processedStreamRef.current) {
-      processedStreamRef.current = glCanvasRef.current.captureStream(30);
-    }
     rafRef.current = requestAnimationFrame(drawFrame);
     return () => cancelAnimationFrame(rafRef.current);
   }, [drawFrame, initGL]);
@@ -735,16 +737,17 @@ export default function Sender() {
       syncCameraAudioInput(stream, `Camera Mic (${camLabel})`);
 
       // Video senders get the processed (canvas) track; audio senders get the mixed track from the audio mixer.
+      // Uses the stable transceiver sender refs (set up in createPeer) rather than matching by
+      // sender.track?.kind — that match fails whenever a sender's track is currently null, which is
+      // exactly the case right after a peer connects before the camera/canvas track exists yet.
       const processedTrack = processedStreamRef.current?.getVideoTracks()[0];
       const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
-      Object.values(peersRef.current).forEach(pc =>
-        pc.getSenders().forEach(sender => {
-          if (sender.track?.kind === 'video' && processedTrack) { sender.replaceTrack(processedTrack); return; }
-          if (sender.track?.kind === 'audio' && mixedAudioTrack) { sender.replaceTrack(mixedAudioTrack); return; }
-          const t = stream.getTracks().find(t => t.kind === sender.track?.kind);
-          if (t) sender.replaceTrack(t);
-        })
-      );
+      Object.values(peersRef.current).forEach(pc => {
+        const vTrack = processedTrack || stream.getVideoTracks()[0];
+        const aTrack = mixedAudioTrack || stream.getAudioTracks()[0];
+        if (vTrack) pc._videoSender?.replaceTrack(vTrack);
+        if (aTrack) pc._audioSender?.replaceTrack(aTrack);
+      });
 
       return stream;
     } catch (err) {
@@ -790,7 +793,7 @@ export default function Sender() {
               else if (bucket.capKbps && mbps * 1000 > bucket.capKbps * 1.5) { bucket.highStreak += 1; bucket.lowStreak = 0; }
               else { bucket.lowStreak = 0; bucket.highStreak = 0; }
 
-              const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+              const sender = pc._videoSender;
               if (sender && bucket.lowStreak >= 2) {
                 const nextCap = Math.max(150, Math.round((bucket.capKbps || 2500) * 0.6));
                 const params = sender.getParameters();
@@ -846,14 +849,22 @@ export default function Sender() {
   const createPeer = useCallback((viewerId) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[viewerId] = pc;
-    // Send the processed (canvas) video track — carries brightness/contrast/LUT/digital zoom to viewers.
+
+    // Always add video/audio transceivers up front, even if no track exists yet — a viewer that's
+    // already waiting can request an offer before getUserMedia() resolves, and without a transceiver
+    // reserved from the start, a track that becomes ready moments later has nowhere to attach to.
     const processedTrack = getProcessedVideoTrack();
-    if (processedTrack) pc.addTrack(processedTrack, ensureTrackStream(processedTrack, streamRef.current));
-    if (!processedTrack) streamRef.current?.getVideoTracks().forEach(t => pc.addTrack(t, streamRef.current));
-    // Send the mixed audio track — combines every audio input (camera mic + any extras) with their gain/mute applied.
+    const videoTransceiver = pc.addTransceiver('video', { direction: 'sendonly' });
+    if (processedTrack) videoTransceiver.sender.replaceTrack(processedTrack);
+    else streamRef.current?.getVideoTracks()[0] && videoTransceiver.sender.replaceTrack(streamRef.current.getVideoTracks()[0]);
+    pc._videoSender = videoTransceiver.sender;
+
     const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
-    if (mixedAudioTrack) pc.addTrack(mixedAudioTrack, mixDestRef.current.stream);
-    else streamRef.current?.getAudioTracks().forEach(t => pc.addTrack(t, streamRef.current));
+    const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendonly' });
+    if (mixedAudioTrack) audioTransceiver.sender.replaceTrack(mixedAudioTrack);
+    else streamRef.current?.getAudioTracks()[0] && audioTransceiver.sender.replaceTrack(streamRef.current.getAudioTracks()[0]);
+    pc._audioSender = audioTransceiver.sender;
+
     pc.onicecandidate = e => e.candidate && socketRef.current?.emit('ice-candidate', { targetId: viewerId, candidate: e.candidate });
     pc.onconnectionstatechange = () => {
       const states = Object.values(peersRef.current).map(p => p.connectionState);
@@ -875,20 +886,11 @@ export default function Sender() {
     const socket = io(SIGNAL_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
-    const tokenKey = `streamlink-sender-token-${roomId}`;
     socket.on('connect', () => {
       setStatus('connecting');
-      const storedToken = localStorage.getItem(tokenKey) || undefined;
-      socket.emit('sender-join', { roomId, token: storedToken }, (res) => {
-        if (!res?.ok) {
-          setRoomTaken(true);
-          return;
-        }
-        setRoomTaken(false);
-        if (res.token) localStorage.setItem(tokenKey, res.token);
-        const { width, height, fps } = PRESETS[2];
-        startCamera(width, height, fps, 'environment', getAudioConstraints(AUDIO_PRESETS[1], {}, false), { zoom: 1, focusAuto: true, exposureAuto: true, wbPreset: 'auto', torchOn: false });
-      });
+      socket.emit('sender-join', { roomId });
+      const { width, height, fps } = PRESETS[2];
+      startCamera(width, height, fps, 'environment', getAudioConstraints(AUDIO_PRESETS[1], {}, false), { zoom: 1, focusAuto: true, exposureAuto: true, wbPreset: 'auto', torchOn: false });
     });
     socket.on('create-offer', async ({ viewerId }) => {
       const pc = createPeer(viewerId);
@@ -985,15 +987,7 @@ export default function Sender() {
         <canvas ref={glCanvasRef} className="sender-canvas"
           style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
 
-        {roomTaken && (
-          <div className="cam-error">
-            <div className="cam-error-icon">🔒</div>
-            <div className="cam-error-title">Room already streaming</div>
-            <div className="cam-error-body">Someone else is already sending to room {roomId}. Pick a different room, or wait for them to stop.</div>
-          </div>
-        )}
-
-        {!roomTaken && camError && (
+        {camError && (
           <div className="cam-error">
             <div className="cam-error-icon">⚠</div>
             <div className="cam-error-title">{camError.title}</div>
