@@ -1,4 +1,4 @@
-import { parseCubeLut, buildLutAtlas, ensureTrackStream, selectCaptureCanvas, WEBGL_CAPTURE_OPTIONS } from './Sender';
+import { parseCubeLut, buildLutAtlas, ensureTrackStream, selectCaptureCanvas, selectOutgoingVideoTrack, WEBGL_CAPTURE_OPTIONS } from './Sender';
 
 test('preserves WebGL frames for canvas capture streams', () => {
   expect(WEBGL_CAPTURE_OPTIONS).toEqual(expect.objectContaining({ preserveDrawingBuffer: true }));
@@ -16,6 +16,13 @@ test('uses the stable 2D canvas for the outgoing capture stream', () => {
   const baseCanvas = { kind: '2d' };
   const webglCanvas = { kind: 'webgl' };
   expect(selectCaptureCanvas(baseCanvas, webglCanvas)).toBe(baseCanvas);
+});
+
+test('prioritises the hardware camera track for reliable WebRTC delivery', () => {
+  const camera = { id: 'camera' };
+  const canvas = { id: 'canvas' };
+  expect(selectOutgoingVideoTrack(camera, canvas)).toBe(camera);
+  expect(selectOutgoingVideoTrack(null, canvas)).toBe(canvas);
 });
 
 const SIMPLE_2X2X2_CUBE = `

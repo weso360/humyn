@@ -174,6 +174,8 @@ export const ensureTrackStream = (track, stream, MediaStreamCtor = MediaStream) 
 // in Chrome/OBS on macOS even while their local preview renders correctly.
 export const selectCaptureCanvas = (baseCanvas) => baseCanvas;
 
+export const selectOutgoingVideoTrack = (cameraTrack, processedTrack) => cameraTrack || processedTrack || null;
+
 const compileShader = (gl, type, src) => {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, src);
@@ -923,14 +925,15 @@ export default function Sender() {
       const camLabel = useCustom ? `${customRes.label} · ${customFps}fps` : preset.label.replace(/^[^\s]+\s/, '');
       syncCameraAudioInput(stream, `Camera Mic (${camLabel})`);
 
-      // Video senders get the processed (canvas) track; audio senders get the mixed track from the audio mixer.
+      // Send the hardware camera track directly. Canvas capture is unreliable in Chrome/OBS on
+      // some Macs and can negotiate successfully while delivering only black frames.
       // Uses the stable transceiver sender refs (set up in createPeer) rather than matching by
       // sender.track?.kind — that match fails whenever a sender's track is currently null, which is
       // exactly the case right after a peer connects before the camera/canvas track exists yet.
       const processedTrack = processedStreamRef.current?.getVideoTracks()[0];
       const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
       Object.values(peersRef.current).forEach(pc => {
-        const vTrack = processedTrack || stream.getVideoTracks()[0];
+        const vTrack = selectOutgoingVideoTrack(stream.getVideoTracks()[0], processedTrack);
         const aTrack = mixedAudioTrack || stream.getAudioTracks()[0];
         if (vTrack) pc._videoSender?.replaceTrack(vTrack);
         if (aTrack) pc._audioSender?.replaceTrack(aTrack);
@@ -1041,9 +1044,10 @@ export default function Sender() {
     // already waiting can request an offer before getUserMedia() resolves, and without a transceiver
     // reserved from the start, a track that becomes ready moments later has nowhere to attach to.
     const processedTrack = getProcessedVideoTrack();
+    const cameraTrack = streamRef.current?.getVideoTracks()[0];
     const videoTransceiver = pc.addTransceiver('video', { direction: 'sendonly' });
-    if (processedTrack) videoTransceiver.sender.replaceTrack(processedTrack);
-    else streamRef.current?.getVideoTracks()[0] && videoTransceiver.sender.replaceTrack(streamRef.current.getVideoTracks()[0]);
+    const outgoingVideoTrack = selectOutgoingVideoTrack(cameraTrack, processedTrack);
+    if (outgoingVideoTrack) videoTransceiver.sender.replaceTrack(outgoingVideoTrack);
     pc._videoSender = videoTransceiver.sender;
 
     const mixedAudioTrack = mixDestRef.current?.stream.getAudioTracks()[0];
