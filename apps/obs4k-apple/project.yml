@@ -1,0 +1,74 @@
+name: OBS4KApple
+options:
+  minimumXcodeGenVersion: 2.45.4
+packages:
+  OBS4KProtocol:
+    path: ../../packages/OBS4KProtocol
+targets:
+  OBS4KPhone:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Phone/Sources
+    dependencies:
+      - package: OBS4KProtocol
+        product: OBS4KProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uk.aivora.obs4k.phone
+        PRODUCT_NAME: OBS 4K Phone
+        SWIFT_VERSION: 6.0
+        SUPPORTS_MACCATALYST: NO
+        TARGETED_DEVICE_FAMILY: 1
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Phone/Info.plist
+      properties:
+        CFBundleDisplayName: OBS 4K Phone
+        LSRequiresIPhoneOS: true
+        NSCameraUsageDescription: OBS 4K Phone uses the camera to send video to your Mac.
+        NSMicrophoneUsageDescription: OBS 4K Phone uses the microphone to send audio to your Mac.
+        NSLocalNetworkUsageDescription: OBS 4K Phone discovers and connects to your Mac on the same local network.
+        NSBonjourServices:
+          - _obs4k._tcp
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UILaunchScreen: {}
+  OBS4KStudio:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Studio/Sources
+    dependencies:
+      - package: OBS4KProtocol
+        product: OBS4KProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uk.aivora.obs4k.studio
+        PRODUCT_NAME: OBS 4K Studio
+        SWIFT_VERSION: 6.0
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Studio/Info.plist
+      properties:
+        CFBundleDisplayName: OBS 4K Studio
+        NSCameraUsageDescription: OBS 4K Studio can preview incoming camera feeds.
+        NSMicrophoneUsageDescription: OBS 4K Studio can monitor incoming audio feeds.
+        NSLocalNetworkUsageDescription: OBS 4K Studio discovers and connects to nearby phones on the same local network.
+        NSBonjourServices:
+          - _obs4k._tcp
+schemes:
+  OBS4KPhone:
+    build:
+      targets:
+        OBS4KPhone: all
+  OBS4KStudio:
+    build:
+      targets:
+        OBS4KStudio: all
